@@ -1,0 +1,6 @@
+{
+  "name": "Заявка на отбор в НФЛ",
+  "description": "Система подачи заявок на отбор в Ногайскую Футбольную Лигу с интеграцией в Google Таблицы и Gmail.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

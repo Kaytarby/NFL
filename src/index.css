@@ -1,0 +1,41 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Fira+Code:wght@400;500&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Outfit", sans-serif;
+  --font-mono: "Fira Code", monospace;
+
+  --color-cl-blue-dark: #030825;
+  --color-cl-blue-midnight: #010416;
+  --color-cl-blue: #0f2a7a;
+  --color-cl-gold: #c5a85c;
+  --color-cl-neon-blue: #00d2ff;
+}
+
+body {
+  background-color: var(--color-cl-blue-midnight);
+  color: #f1f5f9;
+  font-family: var(--font-sans);
+}
+
+/* UCL ambient stars */
+.star-bg {
+  background-image: 
+    radial-gradient(white, rgba(255,255,255,.2) 2px, transparent 40px),
+    radial-gradient(white, rgba(255,255,255,.15) 1px, transparent 30px),
+    radial-gradient(white, rgba(255,255,255,.1) 2px, transparent 40px);
+  background-size: 550px 550px, 350px 350px, 250px 250px;
+  background-position: 0 0, 40px 60px, 130px 270px;
+}
+
+/* Glowing card outline */
+.glow-gold {
+  box-shadow: 0 0 25px rgba(197, 168, 92, 0.15);
+  border-color: rgba(197, 168, 92, 0.3);
+}
+
+.glow-blue {
+  box-shadow: 0 0 25px rgba(0, 210, 255, 0.15);
+  border-color: rgba(0, 210, 255, 0.3);
+}

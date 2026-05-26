@@ -1,0 +1,30 @@
+{
+  "entities": {
+    "Submission": {
+      "title": "Submission",
+      "description": "Football team application submission",
+      "type": "object",
+      "properties": {
+        "teamName": { "type": "string", "description": "Name of the football team" },
+        "zone": { "type": "string", "description": "District or zone of the team" },
+        "captainName": { "type": "string", "description": "Full name of the team captain" },
+        "captainPhone": { "type": "string", "description": "Contact phone number of the captain" },
+        "logoUrl": { "type": "string", "description": "Optional URL to team logo" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "synced": { "type": "boolean" },
+        "players": {
+          "type": "array",
+          "description": "List of active players proposed for the season"
+        }
+      },
+      "required": ["teamName", "zone", "captainName", "captainPhone", "createdAt", "status", "synced"]
+    }
+  },
+  "firestore": {
+    "/submissions/{submissionId}": {
+      "schema": "Submission",
+      "description": "Team applications submitted by guests and managed by admins"
+    }
+  }
+}

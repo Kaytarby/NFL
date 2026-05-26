@@ -1,0 +1,18 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Catch-all safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Submissions collection accessibility
+    match /submissions/{submissionId} {
+      // Anyone can submit their football team info safely
+      allow create: if true;
+      
+      // Only authenticated committee organizers can view and manage applicant data
+      allow read, update, delete: if request.auth != null;
+    }
+  }
+}

@@ -1,0 +1,86 @@
+import { collection, addDoc, getDocs, doc, updateDoc, query, orderBy, getDocFromServer } from 'firebase/firestore';
+import { db } from './firebase/firebase';
+import { Player, ApplicationDraft } from './sheets';
+
+export interface FirestoreSubmission {
+  id?: string;
+  teamName: string;
+  zone: string;
+  captainName: string;
+  captainPhone: string;
+  logoUrl: string | null;
+  players: Player[];
+  createdAt: string;
+  status: 'pending' | 'approved' | 'rejected';
+  synced: boolean;
+}
+
+const SUBMISSIONS_COLLECTION = 'submissions';
+
+/**
+ * Validates the Firestore connection on boot
+ */
+export async function testConnection() {
+  try {
+    await getDocFromServer(doc(db, 'test', 'connection'));
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('the client is offline')) {
+      console.warn("Please check your Firebase configuration: Firestore appears offline.");
+    }
+  }
+}
+
+/**
+ * Saves a new application submission to Firestore
+ */
+export async function saveSubmissionToFirestore(draft: ApplicationDraft): Promise<string> {
+  try {
+    const submissionData: Omit<FirestoreSubmission, 'id'> = {
+      teamName: draft.teamName,
+      zone: draft.zone,
+      captainName: draft.captainName,
+      captainPhone: draft.captainPhone,
+      logoUrl: draft.logoUrl,
+      players: draft.players,
+      createdAt: new Date().toISOString(),
+      status: 'pending',
+      synced: false
+    };
+
+    const docRef = await addDoc(collection(db, SUBMISSIONS_COLLECTION), submissionData);
+    return docRef.id;
+  } catch (err) {
+    console.error("Failed to save submission to Firestore:", err);
+    throw new Error(`Ошибка сохранения в Firestore: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+/**
+ * Fetches all submissions from Firestore (ordered by creation date desc)
+ */
+export async function getSubmissionsFromFirestore(): Promise<FirestoreSubmission[]> {
+  try {
+    const q = query(collection(db, SUBMISSIONS_COLLECTION), orderBy('createdAt', 'desc'));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    } as FirestoreSubmission));
+  } catch (err) {
+    console.error("Failed to get submissions from Firestore:", err);
+    throw new Error(`Ошибка получения из Firestore: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+/**
+ * Updates the sync/status flag of a submission
+ */
+export async function updateSubmissionStatus(id: string, updates: Partial<Pick<FirestoreSubmission, 'status' | 'synced'>>): Promise<void> {
+  try {
+    const docRef = doc(db, SUBMISSIONS_COLLECTION, id);
+    await updateDoc(docRef, updates);
+  } catch (err) {
+    console.error("Failed to update submission status in Firestore:", err);
+    throw new Error(`Ошибка обновления Firestore: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
