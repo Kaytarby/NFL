@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Player, ApplicationDraft, fetchTeams, fetchZones, fetchPlayers, submitApplication, formatRussianDate } from '../lib/sheets';
 import { uploadLogo } from '../lib/storage';
 import { sendNotificationEmail } from '../lib/gmail';
-import { Trophy, Upload, UserPlus, Check, X, AlertTriangle, Save, Loader2, Send, Shield, ListTodo, RefreshCw, Layers, Search, Users, Award, Flame, ChevronRight, Info, LayoutDashboard, Plus, ChevronDown } from 'lucide-react';
+import { Trophy, Upload, UserPlus, Check, X, AlertTriangle, Save, Loader2, Send, Shield, ListTodo, RefreshCw, Layers, Search, Users, Award, Flame, ChevronRight, Info, LayoutDashboard, Plus, ChevronDown, FileSpreadsheet, Printer, FileDown } from 'lucide-react';
 import clsx from 'clsx';
 import { getAuth } from 'firebase/auth';
 import { saveSubmissionToFirestore, getSubmissionsFromFirestore, updateSubmissionStatus, FirestoreSubmission } from '../lib/firestore';
@@ -37,6 +37,119 @@ export default function ApplicationForm({ onLogout, isGuest = false, user = null
   const [loadingSubmissions, setLoadingSubmissions] = useState(false);
   const [syncingSubmissionId, setSyncingSubmissionId] = useState<string | null>(null);
   const [expandedSubmissions, setExpandedSubmissions] = useState<Record<string, boolean>>({});
+
+  // Custom states and helpers for downloading rosters (Excel / print PDF)
+  const [printSubmissions, setPrintSubmissions] = useState<FirestoreSubmission[]>([]);
+
+  useEffect(() => {
+    const handleAfterPrint = () => {
+      setPrintSubmissions([]);
+    };
+    window.addEventListener('afterprint', handleAfterPrint);
+    return () => window.removeEventListener('afterprint', handleAfterPrint);
+  }, []);
+
+  const handleExportAllToExcel = () => {
+    const activeSubs = submissions.filter(s => adminTab === 'approved' ? s.synced : !s.synced);
+    if (activeSubs.length === 0) {
+      alert("Нет заявок для экспорта");
+      return;
+    }
+
+    let csvContent = "Район,Команда,Капитан,Телефон,ФИО Игрока,Дата рождения,Амплуа,Игровой номер,Тип Игрока,Заигран\n";
+
+    activeSubs.forEach(sub => {
+      sub.players.forEach(p => {
+        const isLegString = p.isLegionnaire ? "Легионер" : "Обычный";
+        const isVerifiedString = p.isVerified ? "Да" : "Нет";
+        const birthDateClean = p.birthDate ? p.birthDate.replace(/,/g, ' ') : '';
+        const fullNameClean = p.fullName ? p.fullName.replace(/,/g, ' ') : '';
+        const posClean = p.position ? p.position.replace(/,/g, ' ') : '';
+        const numClean = p.number ? p.number.replace(/,/g, ' ') : '';
+        
+        const row = [
+          sub.zone || '-',
+          sub.teamName || '',
+          sub.captainName || '',
+          sub.captainPhone || '',
+          fullNameClean,
+          birthDateClean,
+          posClean,
+          numClean,
+          isLegString,
+          isVerifiedString
+        ].map(v => `"${v.replace(/"/g, '""')}"`).join(",");
+        
+        csvContent += row + "\n";
+      });
+    });
+
+    const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `NFL_Submissions_${adminTab === 'approved' ? 'Approved' : 'Drafts'}_${new Date().toISOString().slice(0,10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleExportTeamToExcel = (sub: FirestoreSubmission) => {
+    let csvContent = `Заявка команды: ${sub.teamName}\n`;
+    csvContent += `Район: ${sub.zone}\n`;
+    csvContent += `Капитан: ${sub.captainName}\n`;
+    csvContent += `Телефон: ${sub.captainPhone}\n\n`;
+    csvContent += "№,ФИО Игрока,Дата рождения,Амплуа,Игровой номер,Тип Игрока,Заигран\n";
+
+    sub.players.forEach((p, idx) => {
+      const isLegString = p.isLegionnaire ? "Легионер" : "Обычный";
+      const isVerifiedString = p.isVerified ? "Да" : "Нет";
+      const birthDateClean = p.birthDate ? p.birthDate.replace(/,/g, ' ') : '';
+      const fullNameClean = p.fullName ? p.fullName.replace(/,/g, ' ') : '';
+      const posClean = p.position ? p.position.replace(/,/g, ' ') : '';
+      const numClean = p.number ? p.number.replace(/,/g, ' ') : '';
+
+      const row = [
+        idx + 1,
+        fullNameClean,
+        birthDateClean,
+        posClean,
+        numClean,
+        isLegString,
+        isVerifiedString
+      ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(",");
+      
+      csvContent += row + "\n";
+    });
+
+    const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `NFL_Team_${sub.teamName.replace(/\s+/g, '_')}_Excel.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handlePrintAllToPdf = () => {
+    const activeSubs = submissions.filter(s => adminTab === 'approved' ? s.synced : !s.synced);
+    if (activeSubs.length === 0) {
+      alert("Нет заявок для печати");
+      return;
+    }
+    setPrintSubmissions(activeSubs);
+    setTimeout(() => {
+      window.print();
+    }, 150);
+  };
+
+  const handlePrintTeamToPdf = (sub: FirestoreSubmission) => {
+    setPrintSubmissions([sub]);
+    setTimeout(() => {
+      window.print();
+    }, 150);
+  };
 
   const toggleSubmissionRoster = (submissionId: string) => {
     setExpandedSubmissions(prev => ({
@@ -547,7 +660,8 @@ export default function ApplicationForm({ onLogout, isGuest = false, user = null
   };
 
   return (
-    <div className="min-h-screen bg-[#020516] star-bg text-slate-100 font-sans pb-24 relative overflow-hidden">
+    <>
+      <div className="min-h-screen bg-[#020516] star-bg text-slate-100 font-sans pb-24 relative overflow-hidden print:hidden">
       
       {/* Champions League night ambient glow */}
       <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-gradient-to-br from-blue-600/10 to-transparent rounded-full filter blur-[120px] pointer-events-none" />
@@ -723,27 +837,48 @@ export default function ApplicationForm({ onLogout, isGuest = false, user = null
               </div>
             ) : (
               <div className="space-y-6">
-                <div className="flex bg-slate-900 border border-white/5 rounded-xl p-1 w-full max-w-sm mb-6">
-                  <button
-                    type="button"
-                    onClick={() => setAdminTab('drafts')}
-                    className={clsx(
-                      "flex-1 py-2 text-xs font-bold rounded-lg transition-all",
-                      adminTab === 'drafts' ? "bg-slate-800 text-white shadow" : "text-slate-400 hover:text-slate-300"
-                    )}
-                  >
-                    Черновики ({submissions.filter(s => !s.synced).length})
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setAdminTab('approved')}
-                    className={clsx(
-                      "flex-1 py-2 text-xs font-bold rounded-lg transition-all",
-                      adminTab === 'approved' ? "bg-slate-800 text-green-400 shadow" : "text-slate-400 hover:text-green-400/50"
-                    )}
-                  >
-                    Согласованные ({submissions.filter(s => s.synced).length})
-                  </button>
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+                  <div className="flex bg-slate-900 border border-white/5 rounded-xl p-1 w-full max-w-sm">
+                    <button
+                      type="button"
+                      onClick={() => setAdminTab('drafts')}
+                      className={clsx(
+                        "flex-1 py-2 text-xs font-bold rounded-lg transition-all",
+                        adminTab === 'drafts' ? "bg-slate-800 text-white shadow" : "text-slate-400 hover:text-slate-300"
+                      )}
+                    >
+                      Черновики ({submissions.filter(s => !s.synced).length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAdminTab('approved')}
+                      className={clsx(
+                        "flex-1 py-2 text-xs font-bold rounded-lg transition-all",
+                        adminTab === 'approved' ? "bg-slate-800 text-green-400 shadow" : "text-slate-400 hover:text-green-400/50"
+                      )}
+                    >
+                      Согласованные ({submissions.filter(s => s.synced).length})
+                    </button>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2.5">
+                    <button
+                      type="button"
+                      onClick={handleExportAllToExcel}
+                      className="flex items-center gap-2 px-4 py-2 bg-emerald-700/80 hover:bg-emerald-600 border border-emerald-500/20 text-white text-xs font-bold rounded-xl transition-all cursor-pointer shadow-lg shadow-emerald-500/10 active:scale-[0.98]"
+                    >
+                      <FileSpreadsheet className="w-4 h-4 text-emerald-300" />
+                      Экспорт всех в Excel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handlePrintAllToPdf}
+                      className="flex items-center gap-2 px-4 py-2 bg-[#c5a85c]/80 hover:bg-[#c5a85c] text-white hover:text-slate-950 text-xs font-bold rounded-xl transition-all cursor-pointer shadow-lg shadow-[#c5a85c]/10 active:scale-[0.98]"
+                    >
+                      <Printer className="w-4 h-4" />
+                      Печать всех в PDF
+                    </button>
+                  </div>
                 </div>
                 
                 {(() => {
@@ -817,6 +952,24 @@ export default function ApplicationForm({ onLogout, isGuest = false, user = null
                                        <p className="mt-1"><span className="font-bold text-slate-300 uppercase tracking-wider text-[10px]">Телефон:</span> <a href={`tel:${sub.captainPhone}`} className="text-cyan-400 ml-1 hover:underline">{sub.captainPhone}</a></p>
                                      </div>
                                      <div className="flex flex-wrap gap-2 w-full md:w-auto">
+                                       <button
+                                         type="button"
+                                         onClick={() => handleExportTeamToExcel(sub)}
+                                         className="flex-1 md:flex-none justify-center bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-emerald-300/10 text-xs font-bold px-3.5 py-2 rounded-lg flex items-center gap-1.5 transition-all active:scale-[0.97] cursor-pointer"
+                                         title="Скачать состав в Excel"
+                                       >
+                                         <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-300" />
+                                         Excel
+                                       </button>
+                                       <button
+                                         type="button"
+                                         onClick={() => handlePrintTeamToPdf(sub)}
+                                         className="flex-1 md:flex-none justify-center bg-slate-800 hover:bg-slate-700 text-[#c5a85c] border border-[#c5a85c]/10 text-xs font-bold px-3.5 py-2 rounded-lg flex items-center gap-1.5 transition-all active:scale-[0.97] cursor-pointer"
+                                         title="Печать состава в PDF"
+                                       >
+                                         <Printer className="w-3.5 h-3.5" />
+                                         PDF
+                                       </button>
                                        {adminTab === 'drafts' ? (
                                          <button
                                            onClick={() => handleSyncToSheets(sub, 'Согласованные')}
@@ -1510,5 +1663,141 @@ _________________ / _________________________________ (Подпись / ФИО)
         </div>
       )}
     </div>
+
+    {/* Elegant vector-printable layout for official roster PDF export */}
+    {printSubmissions.length > 0 && (
+      <div className="hidden print:block bg-white text-black min-h-screen p-8 font-sans" id="nfl-print-area">
+        {printSubmissions.map((sub, sIdx) => (
+          <div 
+            key={sub.id || sIdx} 
+            className="p-4 bg-white text-black max-w-[800px] mx-auto relative break-after-page"
+            style={{ pageBreakBefore: sIdx > 0 ? 'always' : 'auto' }}
+          >
+            {/* Decorative federation-style header frame */}
+            <div className="border-[3px] border-black p-5 mb-6 relative">
+              <div className="absolute top-1 left-1 right-1 bottom-1 border border-black pointer-events-none" />
+              <div className="text-center relative z-10">
+                <h1 className="text-xl font-black uppercase tracking-wider text-black">
+                  НОГАЙСКАЯ ФУТБОЛЬНАЯ ЛИГА
+                </h1>
+                <h2 className="text-xs font-bold tracking-widest text-slate-800 uppercase mt-0.5">
+                  Официальный заявочный лист • Сезон 2026
+                </h2>
+                <div className="w-20 h-[1.5px] bg-black mx-auto my-2.5" />
+                <p className="text-[9px] uppercase font-mono tracking-widest text-slate-500">
+                  ОТБОРОЧНЫЙ ЭТАП • ФЕДЕРАЦИЯ ЛЮБИТЕЛЬСКОГО ФУТБОЛА
+                </p>
+              </div>
+            </div>
+
+            {/* Team info segment */}
+            <div className="grid grid-cols-2 gap-x-8 gap-y-2 mb-6 bg-slate-50 p-3 border border-black/10 rounded-sm text-xs">
+              <div>
+                <span className="text-slate-500 uppercase font-mono text-[8px] block">Футбольный клуб</span>
+                <strong className="text-base text-black font-extrabold">{sub.teamName}</strong>
+              </div>
+              <div>
+                <span className="text-slate-500 uppercase font-mono text-[8px] block">Район / Зона</span>
+                <strong className="text-sm text-black font-bold">{sub.zone}</strong>
+              </div>
+              <div>
+                <span className="text-slate-500 uppercase font-mono text-[8px] block">Капитан команды</span>
+                <strong className="text-sm text-black font-bold">{sub.captainName}</strong>
+              </div>
+              <div>
+                <span className="text-slate-500 uppercase font-mono text-[8px] block">Контактный телефон</span>
+                <strong className="text-sm text-black font-mono font-bold">{sub.captainPhone}</strong>
+              </div>
+              <div>
+                <span className="text-slate-500 uppercase font-mono text-[8px] block">Дата подачи</span>
+                <span className="text-xs text-black font-medium">{formatRussianDate(sub.createdAt, true)}</span>
+              </div>
+              <div>
+                <span className="text-slate-500 uppercase font-mono text-[8px] block">Состояние проверки</span>
+                <strong className={`text-xs uppercase tracking-wider ${sub.synced ? "text-emerald-700" : "text-amber-600"}`}>
+                  {sub.synced ? "СОГЛАСОВАНО" : "НА ПРОВЕРКЕ ОРГКОМИТЕТА"}
+                </strong>
+              </div>
+            </div>
+
+            {/* Players Table */}
+            <div className="mb-8">
+              <h3 className="text-[11px] font-black uppercase tracking-wider text-black mb-2 pb-1 border-b-[2px] border-black flex justify-between">
+                <span>СОСТАВ КОМАНДЫ ({sub.players.length} ИГРОКОВ)</span>
+                <span className="text-[9px] font-mono text-slate-500">Заявочный лист</span>
+              </h3>
+              <table className="w-full text-left border-collapse border border-black/20 text-[11px]">
+                <thead>
+                  <tr className="bg-slate-100 border-b border-black">
+                    <th className="py-1.5 px-1 border-r border-black/20 text-center w-8">№</th>
+                    <th className="py-1.5 px-2 border-r border-black/20">ФИО Игрока</th>
+                    <th className="py-1.5 px-2 border-r border-black/20 w-24 text-center">Дата рождения</th>
+                    <th className="py-1.5 px-2 border-r border-black/20 w-28 text-center">Амплуа</th>
+                    <th className="py-1.5 px-2 border-r border-black/20 text-center w-16">Номер</th>
+                    <th className="py-1.5 px-2 text-center w-28">Тип</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-black/10">
+                  {sub.players.map((p, pIdx) => (
+                    <tr key={p.id || pIdx} className="hover:bg-slate-50">
+                      <td className="py-1.5 px-1 border-r border-black/10 text-center font-mono text-slate-500">{pIdx + 1}</td>
+                      <td className="py-1.5 px-2 border-r border-black/10 font-bold text-black">{p.fullName}</td>
+                      <td className="py-1.5 px-2 border-r border-black/10 text-center font-mono text-slate-700">{p.birthDate || '-'}</td>
+                      <td className="py-1.5 px-2 border-r border-black/10 text-center text-slate-800">{p.position || '-'}</td>
+                      <td className="py-1.5 px-2 border-r border-black/10 text-center font-mono font-bold text-black">#{p.number || '-'}</td>
+                      <td className="py-1.5 px-2 text-center text-[10px] font-mono">
+                        {p.isLegionnaire ? (
+                          <strong className="text-red-700">ЛЕГИОНЕР</strong>
+                        ) : (
+                          <span className="text-slate-500">Обычный</span>
+                        )}
+                        {p.isVerified && <span className="text-emerald-700 font-extrabold ml-1" title="Заигран">✓</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Captain and Commissioner Sign-off signatures */}
+            <div className="mt-10 pt-4 border-t border-black/20 text-[11px]">
+              <div className="grid grid-cols-2 gap-10">
+                <div className="space-y-4">
+                  <p className="text-slate-800 font-bold">Заявитель от клуба (Капитан):</p>
+                  <div className="space-y-1">
+                    <div className="w-full border-b border-black h-8 flex items-end justify-between px-1 pb-0.5">
+                      <span className="text-[8px] text-slate-400 italic">Подпись</span>
+                      <span className="text-black font-semibold text-xs">{sub.captainName}</span>
+                    </div>
+                    <div className="flex justify-between text-[8px] text-slate-500 font-mono">
+                      <span>(подпись)</span>
+                      <span>(расшифровка подписи)</span>
+                    </div>
+                  </div>
+                  <p className="text-[9px] text-slate-400">Дата: "______" ____________________ 2026 г.</p>
+                </div>
+                <div className="space-y-4">
+                  <p className="text-slate-800 font-bold">Оргкомитет лиги (НФЛ):</p>
+                  <div className="space-y-1">
+                    <div className="w-full border-b border-black h-8 flex items-end justify-between px-1 pb-0.5">
+                      <span className="text-[8px] text-slate-400 italic">М.П. / Печать</span>
+                      <span className="text-slate-400">___________________________</span>
+                    </div>
+                    <div className="flex justify-between text-[8px] text-slate-500 font-mono">
+                      <span>(М.П.)</span>
+                      <span>(расшифровка подписи представителя)</span>
+                    </div>
+                  </div>
+                  <p className="text-[9px] text-slate-400">
+                    Согласовано: {sub.synced ? formatRussianDate(sub.createdAt) : "______ ____________________ 2026 г."}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    )}
+    </>
   );
 }
