@@ -2,12 +2,25 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, User } from 'firebase/auth';
 import { getStorage } from 'firebase/storage';
 import { getFirestore } from 'firebase/firestore';
-import firebaseConfig from '../../../firebase-applet-config.json';
+import aiStudioConfig from '../../../firebase-applet-config.json';
+
+// Allow overriding via Vercel Environment Variables
+const firebaseConfig = {
+  apiKey: (import.meta as any).env.VITE_FIREBASE_API_KEY || aiStudioConfig.apiKey,
+  authDomain: (import.meta as any).env.VITE_FIREBASE_AUTH_DOMAIN || aiStudioConfig.authDomain,
+  projectId: (import.meta as any).env.VITE_FIREBASE_PROJECT_ID || aiStudioConfig.projectId,
+  storageBucket: (import.meta as any).env.VITE_FIREBASE_STORAGE_BUCKET || aiStudioConfig.storageBucket,
+  messagingSenderId: (import.meta as any).env.VITE_FIREBASE_MESSAGING_SENDER_ID || aiStudioConfig.messagingSenderId,
+  appId: (import.meta as any).env.VITE_FIREBASE_APP_ID || aiStudioConfig.appId,
+  measurementId: (import.meta as any).env.VITE_FIREBASE_MEASUREMENT_ID || aiStudioConfig.measurementId,
+};
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const storage = getStorage(app);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+// Use custom DB ID if provided in Env, or fallback to the one from JSON (if exists), otherwise default.
+const customDbId = (import.meta as any).env.VITE_FIREBASE_DATABASE_ID || (aiStudioConfig as any).firestoreDatabaseId;
+export const db = getFirestore(app, customDbId);
 
 const provider = new GoogleAuthProvider();
 // Request Workspace scopes

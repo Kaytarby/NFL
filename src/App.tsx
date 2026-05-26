@@ -15,6 +15,12 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [isGuest, setIsGuest] = useState(false);
 
+  // List of emails allowed to enter the Admin Panel
+  // We use lowercase to ensure match
+  const ADMIN_EMAILS = (import.meta as any).env.VITE_ADMIN_EMAILS
+    ? (import.meta as any).env.VITE_ADMIN_EMAILS.split(',').map((e: string) => e.trim().toLowerCase())
+    : ['kaytarby.88@gmail.com', 'mbairam2107@gmail.com'];
+
   const isAdminRequest = typeof window !== 'undefined' && 
     (window.location.search.includes('admin=true') || window.location.search.includes('admin'));
 
@@ -60,11 +66,35 @@ export default function App() {
     );
   }
 
+  // Double check if the logged in user is actually an admin
+  const isActuallyAdmin = isAdminRequest && user && user.email && ADMIN_EMAILS.includes(user.email.toLowerCase());
+
+  if (isAdminRequest && user && !isActuallyAdmin) {
+    return (
+      <div className="min-h-screen bg-[#020516] flex flex-col items-center justify-center p-4">
+        <div className="bg-slate-900 border border-red-500/30 p-8 rounded-2xl max-w-md w-full text-center">
+          <h2 className="text-xl font-bold text-white mb-2">Доступ запрещен</h2>
+          <p className="text-slate-400 mb-6">Ваша почта ({user.email}) не зарегистрирована как администратор.</p>
+          <button 
+             onClick={() => {
+                logout();
+                window.history.replaceState({}, '', '/');
+                window.location.reload();
+             }}
+             className="w-full bg-[#c5a85c] text-white font-medium py-3 rounded-xl hover:opacity-90"
+          >
+            Выйти и вернуться на главную
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <ApplicationForm 
       isGuest={isGuest || (!user)}
       user={user}
-      defaultShowAdmin={isAdminRequest && !!user}
+      defaultShowAdmin={!!isActuallyAdmin}
       onLogout={() => {
         if (user) {
           logout();
