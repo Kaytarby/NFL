@@ -2,10 +2,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Player, ApplicationDraft, fetchTeams, fetchZones, fetchPlayers, submitApplication, formatRussianDate } from '../lib/sheets';
 import { uploadLogo } from '../lib/storage';
 import { sendNotificationEmail } from '../lib/gmail';
-import { Trophy, Upload, UserPlus, Check, X, AlertTriangle, Save, Loader2, Send, Shield, ListTodo, RefreshCw, Layers, Search, Users, Award, Flame, ChevronRight, Info, LayoutDashboard, Plus, ChevronDown, FileSpreadsheet, Printer, FileDown, FileText } from 'lucide-react';
+import { Trophy, Upload, UserPlus, Check, X, AlertTriangle, Save, Loader2, Send, Shield, ListTodo, RefreshCw, Layers, Search, Users, Award, Flame, ChevronRight, Info, LayoutDashboard, Plus, ChevronDown, FileSpreadsheet, Printer, FileDown, FileText, Trash2 } from 'lucide-react';
 import clsx from 'clsx';
 import { getAuth } from 'firebase/auth';
-import { saveSubmissionToFirestore, getSubmissionsFromFirestore, updateSubmissionStatus, FirestoreSubmission } from '../lib/firestore';
+import { saveSubmissionToFirestore, getSubmissionsFromFirestore, updateSubmissionStatus, deleteSubmissionFromFirestore, FirestoreSubmission } from '../lib/firestore';
 
 const DRAFT_KEY = 'nfl_application_draft';
 
@@ -61,7 +61,7 @@ export default function ApplicationForm({ onLogout, isGuest = false, user = null
     activeSubs.forEach(sub => {
       sub.players.forEach(p => {
         const isLegString = p.isLegionnaire ? "Легионер" : "Обычный";
-        const isVerifiedString = p.isVerified ? "Да" : "Нет";
+        const isVerifiedString = p.isVerified ? "Заигран" : (p.fullName && dbPlayers.some(db => db.fullName.toLowerCase() === p.fullName?.toLowerCase()) ? "В базе" : "Новый");
         const birthDateClean = p.birthDate ? p.birthDate.replace(/,/g, ' ') : '';
         const fullNameClean = p.fullName ? p.fullName.replace(/,/g, ' ') : '';
         const posClean = p.position ? p.position.replace(/,/g, ' ') : '';
@@ -103,7 +103,7 @@ export default function ApplicationForm({ onLogout, isGuest = false, user = null
 
     sub.players.forEach((p, idx) => {
       const isLegString = p.isLegionnaire ? "Легионер" : "Обычный";
-      const isVerifiedString = p.isVerified ? "Да" : "Нет";
+      const isVerifiedString = p.isVerified ? "Заигран" : (p.fullName && dbPlayers.some(db => db.fullName.toLowerCase() === p.fullName?.toLowerCase()) ? "В базе" : "Новый");
       const birthDateClean = p.birthDate ? p.birthDate.replace(/,/g, ' ') : '';
       const fullNameClean = p.fullName ? p.fullName.replace(/,/g, ' ') : '';
       const posClean = p.position ? p.position.replace(/,/g, ' ') : '';
@@ -336,6 +336,19 @@ export default function ApplicationForm({ onLogout, isGuest = false, user = null
       alert("Ошибка при отзыве заявки: " + (err.message || err));
     } finally {
       setSyncingSubmissionId(null);
+    }
+  };
+
+  const handleDeleteSubmission = async (submission: FirestoreSubmission) => {
+    if (!submission.id) return;
+    if (window.confirm(`Вы уверены, что хотите удалить заявку команды "${submission.teamName}"? Это действие необратимо.`)) {
+      try {
+        await deleteSubmissionFromFirestore(submission.id);
+        await loadSubmissions();
+      } catch (err: any) {
+        console.error("Failed to delete submission", err);
+        alert(`Ошибка удаления: ${err.message}`);
+      }
     }
   };
 
@@ -971,13 +984,22 @@ export default function ApplicationForm({ onLogout, isGuest = false, user = null
                                          PDF
                                        </button>
                                        {adminTab === 'drafts' ? (
-                                         <button
-                                           onClick={() => handleSyncToSheets(sub, 'Согласованные')}
-                                           disabled={syncingSubmissionId !== null}
-                                           className="flex-1 md:flex-none justify-center bg-gradient-to-r from-[#c5a85c] to-[#e4cb8c] hover:scale-[1.02] active:scale-[0.98] text-slate-950 text-xs font-bold px-4 py-2 rounded-lg flex items-center gap-1.5 transition-all shadow-lg disabled:opacity-50"
-                                         >
-                                           {syncingSubmissionId === sub.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />} Согласовать
-                                         </button>
+                                         <>
+                                           <button
+                                             onClick={() => handleSyncToSheets(sub, 'Согласованные')}
+                                             disabled={syncingSubmissionId !== null}
+                                             className="flex-1 md:flex-none justify-center bg-gradient-to-r from-[#c5a85c] to-[#e4cb8c] hover:scale-[1.02] active:scale-[0.98] text-slate-950 text-xs font-bold px-4 py-2 rounded-lg flex items-center gap-1.5 transition-all shadow-lg disabled:opacity-50"
+                                           >
+                                             {syncingSubmissionId === sub.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />} Согласовать
+                                           </button>
+                                           <button
+                                             onClick={() => handleDeleteSubmission(sub)}
+                                             className="flex-1 md:flex-none justify-center bg-slate-900 border border-slate-700/50 hover:bg-red-500/10 hover:border-red-500/20 hover:text-red-400 text-slate-400 text-xs font-bold px-3 py-2 rounded-lg flex items-center gap-1.5 transition-all"
+                                             title="Удалить заявку"
+                                           >
+                                             <Trash2 className="w-3.5 h-3.5" />
+                                           </button>
+                                         </>
                                        ) : (
                                          <button
                                            onClick={() => handleRevokeApproval(sub)}

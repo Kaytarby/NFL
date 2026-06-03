@@ -1,4 +1,4 @@
-import { collection, addDoc, getDocs, doc, updateDoc, query, orderBy, getDocFromServer } from 'firebase/firestore';
+import { collection, addDoc, getDocs, doc, updateDoc, query, orderBy, getDocFromServer, deleteDoc } from 'firebase/firestore';
 import { db } from './firebase/firebase';
 import { Player, ApplicationDraft } from './sheets';
 
@@ -82,5 +82,18 @@ export async function updateSubmissionStatus(id: string, updates: Partial<Pick<F
   } catch (err) {
     console.error("Failed to update submission status in Firestore:", err);
     throw new Error(`Ошибка обновления Firestore: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+/**
+ * Deletes a submission from Firestore
+ */
+export async function deleteSubmissionFromFirestore(id: string): Promise<void> {
+  try {
+    const docRef = doc(db, SUBMISSIONS_COLLECTION, id);
+    await deleteDoc(docRef);
+  } catch (err) {
+    console.error("Failed to delete submission from Firestore:", err);
+    throw new Error(`Ошибка удаления из Firestore: ${err instanceof Error ? err.message : String(err)}`);
   }
 }
