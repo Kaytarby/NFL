@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Player, ApplicationDraft, fetchTeams, fetchZones, fetchPlayers, submitApplication, formatRussianDate } from '../lib/sheets';
 import { uploadLogo } from '../lib/storage';
 import { sendNotificationEmail } from '../lib/gmail';
-import { Trophy, Upload, UserPlus, Check, X, AlertTriangle, Save, Loader2, Send, Shield, ListTodo, RefreshCw, Layers, Search, Users, Award, Flame, ChevronRight, Info, LayoutDashboard, Plus, ChevronDown, FileSpreadsheet, Printer, FileDown } from 'lucide-react';
+import { Trophy, Upload, UserPlus, Check, X, AlertTriangle, Save, Loader2, Send, Shield, ListTodo, RefreshCw, Layers, Search, Users, Award, Flame, ChevronRight, Info, LayoutDashboard, Plus, ChevronDown, FileSpreadsheet, Printer, FileDown, FileText } from 'lucide-react';
 import clsx from 'clsx';
 import { getAuth } from 'firebase/auth';
 import { saveSubmissionToFirestore, getSubmissionsFromFirestore, updateSubmissionStatus, FirestoreSubmission } from '../lib/firestore';
@@ -1018,8 +1018,14 @@ export default function ApplicationForm({ onLogout, isGuest = false, user = null
                                                 ЛЕГ
                                               </span>
                                             )}
-                                            {p.isVerified && (
+                                            {p.isVerified ? (
                                               <span className="w-1.5 h-1.5 bg-green-500 rounded-full" title="Заигран"></span>
+                                            ) : (
+                                              <React.Fragment>
+                                                {p.fullName && dbPlayers.some(db => db.fullName.toLowerCase() === p.fullName.toLowerCase()) && (
+                                                  <FileText className="w-3 h-3 text-orange-400" title="Был в базе, но не заигран" />
+                                                )}
+                                              </React.Fragment>
                                             )}
                                             {duplicateInTeam && (
                                               <span 
@@ -1406,7 +1412,7 @@ export default function ApplicationForm({ onLogout, isGuest = false, user = null
                                      >
                                        <span className="font-bold text-white text-xs flex items-center gap-1.5">
                                          {s.fullName}
-                                         {s.isVerified && <span className="w-1.5 h-1.5 bg-green-500 rounded-full" title="Заигран"></span>}
+                                         {s.isVerified ? <span className="w-1.5 h-1.5 bg-green-500 rounded-full" title="Заигран"></span> : <FileText className="w-3 h-3 text-orange-400" title="Был в базе, но не заигран" />}
                                        </span>
                                        <span className="text-[10px] text-slate-400 font-mono">
                                          {s.birthDate || 'ДД.ММ.ГГГГ'} • {s.position || 'Позиция'} • Команда: {s.teamName}
@@ -1751,7 +1757,13 @@ _________________ / _________________________________ (Подпись / ФИО)
                         ) : (
                           <span className="text-slate-500">Обычный</span>
                         )}
-                        {p.isVerified && <span className="text-emerald-700 font-extrabold ml-1" title="Заигран">✓</span>}
+                        {p.isVerified ? (
+                          <span className="text-emerald-700 font-extrabold ml-1" title="Заигран">✓</span>
+                        ) : (
+                          p.fullName && dbPlayers.some(db => db.fullName.toLowerCase() === p.fullName?.toLowerCase()) && (
+                            <FileText className="w-3 h-3 text-orange-500 inline-block ml-1" title="Был в базе, но не заигран" />
+                          )
+                        )}
                       </td>
                     </tr>
                   ))}
