@@ -258,7 +258,6 @@ export default function ApplicationForm({ onLogout, isGuest = false, user = null
   }, []);
 
   const loadSubmissions = async () => {
-    if (!user) return;
     try {
       setLoadingSubmissions(true);
       const data = await getSubmissionsFromFirestore();
@@ -271,10 +270,8 @@ export default function ApplicationForm({ onLogout, isGuest = false, user = null
   };
 
   useEffect(() => {
-    if (user) {
-      loadSubmissions();
-    }
-  }, [user]);
+    loadSubmissions();
+  }, []);
 
   const handleSyncToSheets = async (submission: FirestoreSubmission, sheetName: string) => {
     if (!submission.id) return;
@@ -335,6 +332,15 @@ export default function ApplicationForm({ onLogout, isGuest = false, user = null
 
   const handleUpdateTeamName = async (id: string, newTeamName: string) => {
     try {
+      const nameClean = newTeamName.trim().toLowerCase();
+      const currentSub = submissions.find(s => s.id === id);
+      const existing = submissions.find(s => s.id !== id && s.teamName.trim().toLowerCase() === nameClean && s.zone !== currentSub?.zone);
+      
+      if (existing) {
+        alert(`Ошибка: команда с именем "${newTeamName}" уже существует в другом районе/зоне (${existing.zone}). Выберите уникальное имя.`);
+        return;
+      }
+      
       await updateSubmissionData(id, { teamName: newTeamName });
       await loadSubmissions();
     } catch (err: any) {
@@ -394,23 +400,25 @@ export default function ApplicationForm({ onLogout, isGuest = false, user = null
     return () => clearTimeout(delayDebounceFn);
   }, [form]);
 
-  // Derive suggested teams including qualifier submissions to help them find mismatched names
+  // Derive suggested teams including all submissions to help them find mismatched names
   const suggestedTeams = useMemo(() => {
     const fromDb = [...dbTeams];
-    if (stage === 'final') {
-      const fromSubs = submissions
-        .filter(s => (s.stage || 'qualifier') === 'qualifier' && s.teamName)
-        // If zone is selected, only show teams from that zone, otherwise show all
-        .filter(s => !form.zone || s.zone === form.zone)
-        .map(s => s.teamName.trim());
-      fromSubs.forEach(t => {
-        if (!fromDb.find(d => d.toLowerCase() === t.toLowerCase())) {
-          fromDb.push(t);
-        }
-      });
-    }
+    
+    // Always include teams from all submissions
+    const fromSubs = submissions
+      .filter(s => s.teamName)
+      // If zone is selected, only show teams from that zone, otherwise show all
+      .filter(s => !form.zone || s.zone === form.zone)
+      .map(s => s.teamName.trim());
+      
+    fromSubs.forEach(t => {
+      if (!fromDb.find(d => d.toLowerCase() === t.toLowerCase())) {
+        fromDb.push(t);
+      }
+    });
+
     return fromDb;
-  }, [dbTeams, submissions, stage, form.zone]);
+  }, [dbTeams, submissions, form.zone]);
 
   const handleTeamNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newTeamName = e.target.value;

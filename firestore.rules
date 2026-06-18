@@ -11,8 +11,11 @@ service cloud.firestore {
       // Anyone can submit their football team info safely
       allow create: if true;
       
-      // Only authenticated committee organizers can view and manage applicant data
-      allow read, update, delete: if request.auth != null;
+      // Anyone can read submissions to see existing team names and prevent duplicates
+      allow read: if true;
+      
+      // Only authenticated committee organizers can update and delete
+      allow update, delete: if request.auth != null;
     }
   }
 }
