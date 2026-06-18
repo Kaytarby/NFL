@@ -1088,24 +1088,25 @@ export default function ApplicationForm({ onLogout, isGuest = false, user = null
                                className="flex items-center justify-between w-full text-left"
                              >
                                 <div className="flex flex-col md:flex-row md:items-center gap-2">
-                                   <div className="flex items-center gap-1 group/title">
-                                     <span className="font-bold text-white text-sm">{sub.teamName}</span>
-                                     {sub.id && (
-                                       <span
-                                         onClick={(e) => {
-                                           e.stopPropagation();
-                                           const newName = window.prompt("Изменить название команды (ТОЛЬКО ДЛЯ ЭТОЙ ЗАЯВКИ):", sub.teamName);
-                                           if (newName && newName.trim() !== sub.teamName) {
-                                             handleUpdateTeamName(sub.id!, newName.trim());
-                                           }
-                                         }}
-                                         className="p-1 opacity-0 group-hover/title:opacity-100 text-slate-500 hover:text-[#c5a85c] rounded transition-all cursor-pointer"
-                                         title="Переименовать команду"
-                                       >
-                                         <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>
-                                       </span>
-                                     )}
-                                   </div>
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-bold text-white text-sm">{sub.teamName}</span>
+                                      {sub.id && (
+                                        <div
+                                          onClick={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            const newName = window.prompt("Изменить название команды (ТОЛЬКО ДЛЯ ЭТОЙ ЗАЯВКИ):", sub.teamName);
+                                            if (newName && newName.trim() !== sub.teamName) {
+                                              handleUpdateTeamName(sub.id!, newName.trim());
+                                            }
+                                          }}
+                                          className="p-1.5 bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-cyan-400 rounded transition-all cursor-pointer z-10 flex items-center justify-center shrink-0"
+                                          title="Переименовать команду"
+                                        >
+                                          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>
+                                        </div>
+                                      )}
+                                    </div>
                                   <span className="text-[10px] text-slate-500 font-mono hidden md:inline">•</span>
                                   <span className="text-[10px] text-cyan-400 bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 rounded-full font-bold">Версия {getSubmissionVersion(sub)}</span>
                                   <span className="text-[10px] text-slate-400 bg-slate-900 border border-white/5 px-2 py-0.5 rounded-full font-mono ml-0 md:ml-2">{formatRussianDate(sub.createdAt, true)}</span>
