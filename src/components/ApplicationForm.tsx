@@ -34,6 +34,9 @@ export default function ApplicationForm({ onLogout, isGuest = false, user = null
       return {};
     }
   });
+  const [finalDate, setFinalDate] = useState<string>(() => {
+    return localStorage.getItem('NFL_FINAL_DATE') || '01.06.2026';
+  });
   const [adminTab, setAdminTab] = useState<'drafts' | 'approved'>('drafts');
   const [openSubmissionId, setOpenSubmissionId] = useState<string | null>(null);
   const [expandedAdminZones, setExpandedAdminZones] = useState<Record<string, boolean>>({});
@@ -132,14 +135,14 @@ export default function ApplicationForm({ onLogout, isGuest = false, user = null
     setPrintSubmissions(activeSubs);
     setTimeout(() => {
       window.print();
-    }, 150);
+    }, 500);
   };
 
   const handlePrintTeamToPdf = (sub: FirestoreSubmission) => {
     setPrintSubmissions([sub]);
     setTimeout(() => {
       window.print();
-    }, 150);
+    }, 500);
   };
 
   const toggleSubmissionRoster = (submissionId: string) => {
@@ -571,7 +574,7 @@ export default function ApplicationForm({ onLogout, isGuest = false, user = null
     // 3. Validate Age
     let under16 = [];
     let under18 = [];
-    const tDate = zoneDates[form.zone] || '01.06.2026';
+    const tDate = stage === 'final' ? finalDate : (zoneDates[form.zone] || '01.06.2026');
     for (const p of activePlayers) {
       if (p.birthDate.length === 10) {
         const age = calculateAge(p.birthDate, tDate);
@@ -723,7 +726,7 @@ export default function ApplicationForm({ onLogout, isGuest = false, user = null
 
   return (
     <>
-      <div className="min-h-screen bg-[#020516] star-bg text-slate-100 font-sans pb-24 relative overflow-hidden print:hidden">
+      <div className={clsx("min-h-screen bg-[#020516] star-bg text-slate-100 font-sans pb-24 relative overflow-hidden", printSubmissions.length > 0 ? "hidden" : "block")}>
       
       {/* Champions League night ambient glow */}
       <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-gradient-to-br from-blue-600/10 to-transparent rounded-full filter blur-[120px] pointer-events-none" />
@@ -855,41 +858,66 @@ export default function ApplicationForm({ onLogout, isGuest = false, user = null
                 📅 Даты проведения турниров для проверки лимита 16 лет
               </h3>
               <p className="text-xs text-slate-400 mb-4">
-                Укажите дату первого матча для каждого района (зоны). Система будет автоматически рассчитывать возраст игроков в заявке на основе выбранной даты отборов. Изменения сохраняются моментально.
+                Укажите дату первого матча. Система будет автоматически рассчитывать возраст игроков в заявке на основе выбранной даты отборов/финала. Изменения сохраняются моментально.
               </p>
               
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-64 overflow-y-auto pr-1">
-                {dbZones.map(zone => (
-                  <div key={zone} className="bg-slate-900 border border-white/5 rounded-xl p-2.5 flex items-center justify-between gap-3">
-                    <span className="text-xs font-semibold text-slate-300 truncate" title={zone}>{zone}</span>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <input 
-                        type="text"
-                        placeholder="ДД.ММ.ГГГГ"
-                        value={zoneDates[zone] || '01.06.2026'}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          const digits = val.replace(/\D/g, '').substring(0, 8);
-                          let formatted = '';
-                          if (digits.length > 0) formatted += digits.substring(0, 2);
-                          if (digits.length > 2) formatted += '.' + digits.substring(2, 4);
-                          if (digits.length > 4) formatted += '.' + digits.substring(4, 8);
-                          
-                          const nextDates = { ...zoneDates, [zone]: formatted };
-                          setZoneDates(nextDates);
-                          localStorage.setItem('NFL_ZONE_DATES', JSON.stringify(nextDates));
-                        }}
-                        className="w-[95px] bg-slate-950 border border-white/5 rounded px-2 py-1 text-center font-mono text-[11px] text-[#c5a85c] focus:outline-none focus:ring-1 focus:ring-[#c5a85c]"
-                      />
+              {adminStageTab === 'final' ? (
+                <div className="bg-slate-900 border border-white/5 rounded-xl p-4 flex items-center justify-between gap-3 max-w-sm">
+                  <span className="text-sm font-semibold text-slate-300">Дата Финального Этапа</span>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <input 
+                      type="text"
+                      placeholder="ДД.ММ.ГГГГ"
+                      value={finalDate}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        const digits = val.replace(/\D/g, '').substring(0, 8);
+                        let formatted = '';
+                        if (digits.length > 0) formatted += digits.substring(0, 2);
+                        if (digits.length > 2) formatted += '.' + digits.substring(2, 4);
+                        if (digits.length > 4) formatted += '.' + digits.substring(4, 8);
+                        
+                        setFinalDate(formatted);
+                        localStorage.setItem('NFL_FINAL_DATE', formatted);
+                      }}
+                      className="w-[100px] bg-slate-950 border border-white/5 rounded px-2 py-1.5 text-center font-mono text-[13px] text-[#c5a85c] focus:outline-none focus:ring-1 focus:ring-[#c5a85c]"
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-64 overflow-y-auto pr-1">
+                  {dbZones.map(zone => (
+                    <div key={zone} className="bg-slate-900 border border-white/5 rounded-xl p-2.5 flex items-center justify-between gap-3">
+                      <span className="text-xs font-semibold text-slate-300 truncate" title={zone}>{zone}</span>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <input 
+                          type="text"
+                          placeholder="ДД.ММ.ГГГГ"
+                          value={zoneDates[zone] || '01.06.2026'}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            const digits = val.replace(/\D/g, '').substring(0, 8);
+                            let formatted = '';
+                            if (digits.length > 0) formatted += digits.substring(0, 2);
+                            if (digits.length > 2) formatted += '.' + digits.substring(2, 4);
+                            if (digits.length > 4) formatted += '.' + digits.substring(4, 8);
+                            
+                            const nextDates = { ...zoneDates, [zone]: formatted };
+                            setZoneDates(nextDates);
+                            localStorage.setItem('NFL_ZONE_DATES', JSON.stringify(nextDates));
+                          }}
+                          className="w-[95px] bg-slate-950 border border-white/5 rounded px-2 py-1 text-center font-mono text-[11px] text-[#c5a85c] focus:outline-none focus:ring-1 focus:ring-[#c5a85c]"
+                        />
+                      </div>
                     </div>
-                  </div>
-                ))}
-                {dbZones.length === 0 && (
-                  <div className="col-span-2 text-center py-4 text-xs text-slate-500 italic">
-                    Загрузка районов из Google-таблицы (лист "Zones")...
-                  </div>
-                )}
-              </div>
+                  ))}
+                  {dbZones.length === 0 && (
+                    <div className="col-span-2 text-center py-4 text-xs text-slate-500 italic">
+                      Загрузка районов из Google-таблицы (лист "Zones")...
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {loadingSubmissions ? (
@@ -1575,7 +1603,8 @@ export default function ApplicationForm({ onLogout, isGuest = false, user = null
                                  className="w-full bg-slate-950 border border-white/5 rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:ring-2 focus:ring-[#c5a85c] focus:border-transparent transition-all"
                                />
                                {(() => {
-                                 const playerAge = player.birthDate.length === 10 ? calculateAge(player.birthDate, zoneDates[form.zone] || '01.06.2026') : null;
+                                 const tDate = stage === 'final' ? finalDate : (zoneDates[form.zone] || '01.06.2026');
+                                 const playerAge = player.birthDate.length === 10 ? calculateAge(player.birthDate, tDate) : null;
                                  if (playerAge !== null && playerAge < 18 && playerAge >= 16) {
                                    const consentText = `СОГЛАСИЕ РОДИТЕЛЕЙ (ЗАКОННЫХ ПРЕДСТАВИТЕЛЕЙ)
 НА УЧАСТИЕ НЕСОВЕРШЕННОЛЕТНЕГО В СОРЕВНОВАНИЯХ ПО ФУТБОЛУ
@@ -1830,7 +1859,7 @@ _________________ / _________________________________ (Подпись / ФИО)
 
     {/* Elegant vector-printable layout for official roster PDF export */}
     {printSubmissions.length > 0 && (
-      <div className="hidden print:block bg-white text-black min-h-screen p-8 font-sans" id="nfl-print-area">
+      <div className="bg-white text-black min-h-screen p-8 font-sans" id="nfl-print-area">
         {printSubmissions.map((sub, sIdx) => (
           <div 
             key={sub.id || sIdx} 
