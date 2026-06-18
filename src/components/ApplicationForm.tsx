@@ -5,7 +5,7 @@ import { sendNotificationEmail } from '../lib/gmail';
 import { Trophy, Upload, UserPlus, Check, X, AlertTriangle, Save, Loader2, Send, Shield, ListTodo, RefreshCw, Layers, Search, Users, Award, Flame, ChevronRight, Info, LayoutDashboard, Plus, ChevronDown, FileSpreadsheet, Printer, FileDown, FileText, Trash2 } from 'lucide-react';
 import clsx from 'clsx';
 import { getAuth } from 'firebase/auth';
-import { saveSubmissionToFirestore, getSubmissionsFromFirestore, updateSubmissionStatus, deleteSubmissionFromFirestore, getTeamSubmission, FirestoreSubmission } from '../lib/firestore';
+import { saveSubmissionToFirestore, getSubmissionsFromFirestore, updateSubmissionData, deleteSubmissionFromFirestore, getTeamSubmission, FirestoreSubmission } from '../lib/firestore';
 import * as XLSX from 'xlsx';
 
 const DRAFT_KEY = 'nfl_application_draft';
@@ -302,7 +302,7 @@ export default function ApplicationForm({ onLogout, isGuest = false, user = null
       }
 
       // 3. Mark as synced in Firestore!
-      await updateSubmissionStatus(submission.id, { synced: true, status: 'approved' });
+      await updateSubmissionData(submission.id, { synced: true, status: 'approved' });
 
       alert(`Заявка команды "${submission.teamName}" успешно синхронизирована с Google Таблицами (Вкладка: ${sheetName})!`);
       
@@ -321,7 +321,7 @@ export default function ApplicationForm({ onLogout, isGuest = false, user = null
     if (!window.confirm(`Вы уверены, что хотите отозвать статус "согласованной" у заявки команды "${submission.teamName}"?`)) return;
     try {
       setSyncingSubmissionId(submission.id);
-      await updateSubmissionStatus(submission.id, { synced: false, status: 'pending' });
+      await updateSubmissionData(submission.id, { synced: false, status: 'pending' });
       await loadSubmissions();
       // NOTE: We don't delete rows from Google Sheets automatically to avoid complex row matching logic. 
       // The new submission sheet holds the history.
@@ -330,6 +330,15 @@ export default function ApplicationForm({ onLogout, isGuest = false, user = null
       alert("Ошибка при отзыве заявки: " + (err.message || err));
     } finally {
       setSyncingSubmissionId(null);
+    }
+  };
+
+  const handleUpdateTeamName = async (id: string, newTeamName: string) => {
+    try {
+      await updateSubmissionData(id, { teamName: newTeamName });
+      await loadSubmissions();
+    } catch (err: any) {
+      alert("Ошибка при переименовании: " + err.message);
     }
   };
 
@@ -385,6 +394,24 @@ export default function ApplicationForm({ onLogout, isGuest = false, user = null
     return () => clearTimeout(delayDebounceFn);
   }, [form]);
 
+  // Derive suggested teams including qualifier submissions to help them find mismatched names
+  const suggestedTeams = useMemo(() => {
+    const fromDb = [...dbTeams];
+    if (stage === 'final') {
+      const fromSubs = submissions
+        .filter(s => (s.stage || 'qualifier') === 'qualifier' && s.teamName)
+        // If zone is selected, only show teams from that zone, otherwise show all
+        .filter(s => !form.zone || s.zone === form.zone)
+        .map(s => s.teamName.trim());
+      fromSubs.forEach(t => {
+        if (!fromDb.find(d => d.toLowerCase() === t.toLowerCase())) {
+          fromDb.push(t);
+        }
+      });
+    }
+    return fromDb;
+  }, [dbTeams, submissions, stage, form.zone]);
+
   const handleTeamNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newTeamName = e.target.value;
     setForm(prev => ({ ...prev, teamName: newTeamName }));
@@ -393,9 +420,9 @@ export default function ApplicationForm({ onLogout, isGuest = false, user = null
   const handleTeamSelect = async (name: string) => {
     // If we are in 'final', try to fetch latest 'final', then fallback to 'qualifier'
     if (stage === 'final') {
-      let prevSub = await getTeamSubmission(name, 'final');
+      let prevSub = await getTeamSubmission(name, 'final', form.zone || undefined);
       if (!prevSub) {
-        prevSub = await getTeamSubmission(name, 'qualifier');
+        prevSub = await getTeamSubmission(name, 'qualifier', form.zone || undefined);
       }
       
       if (prevSub) {
@@ -539,6 +566,22 @@ export default function ApplicationForm({ onLogout, isGuest = false, user = null
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    // 0. Check unique team name across other zones
+    const teamNameClean = form.teamName.trim().toLowerCase();
+    const existingOtherZone = submissions.find(
+      s => s.teamName.trim().toLowerCase() === teamNameClean &&
+           s.zone && s.zone !== form.zone
+    );
+    if (existingOtherZone) {
+      setErrorModal({
+        isOpen: true,
+        title: "Название команды занято",
+        message: `Команда с названием "${form.teamName}" уже зарегистрирована в районе "${existingOtherZone.zone}".`,
+        steps: ["Пожалуйста, выберите уникальное название для вашей команды (например, добавьте название села или района)."]
+      });
+      return;
+    }
+
     // 1. Check basic group fields
     if (!form.teamName.trim() || !form.captainName.trim() || !form.captainPhone.trim() || !form.zone.trim()) {
       setErrorModal({
@@ -1045,7 +1088,24 @@ export default function ApplicationForm({ onLogout, isGuest = false, user = null
                                className="flex items-center justify-between w-full text-left"
                              >
                                 <div className="flex flex-col md:flex-row md:items-center gap-2">
-                                  <span className="font-bold text-white text-sm">{sub.teamName}</span>
+                                   <div className="flex items-center gap-1 group/title">
+                                     <span className="font-bold text-white text-sm">{sub.teamName}</span>
+                                     {sub.id && (
+                                       <span
+                                         onClick={(e) => {
+                                           e.stopPropagation();
+                                           const newName = window.prompt("Изменить название команды (ТОЛЬКО ДЛЯ ЭТОЙ ЗАЯВКИ):", sub.teamName);
+                                           if (newName && newName.trim() !== sub.teamName) {
+                                             handleUpdateTeamName(sub.id!, newName.trim());
+                                           }
+                                         }}
+                                         className="p-1 opacity-0 group-hover/title:opacity-100 text-slate-500 hover:text-[#c5a85c] rounded transition-all cursor-pointer"
+                                         title="Переименовать команду"
+                                       >
+                                         <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>
+                                       </span>
+                                     )}
+                                   </div>
                                   <span className="text-[10px] text-slate-500 font-mono hidden md:inline">•</span>
                                   <span className="text-[10px] text-cyan-400 bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 rounded-full font-bold">Версия {getSubmissionVersion(sub)}</span>
                                   <span className="text-[10px] text-slate-400 bg-slate-900 border border-white/5 px-2 py-0.5 rounded-full font-mono ml-0 md:ml-2">{formatRussianDate(sub.createdAt, true)}</span>
@@ -1317,7 +1377,7 @@ export default function ApplicationForm({ onLogout, isGuest = false, user = null
                         />
                         {showTeamSuggestions && (
                           <div className="absolute left-0 right-0 top-full mt-1 bg-slate-950 border border-white/10 rounded-xl shadow-[0_10px_30px_rgba(0,0,0,0.5)] z-50 overflow-hidden max-h-60 overflow-y-auto">
-                            {dbTeams
+                            {suggestedTeams
                               .filter(t => !form.teamName || t.trim().toLowerCase().includes(form.teamName.trim().toLowerCase()))
                               .map(t => (
                                 <div
@@ -1334,7 +1394,7 @@ export default function ApplicationForm({ onLogout, isGuest = false, user = null
                                 </div>
                               ))
                             }
-                            {dbTeams.filter(t => !form.teamName || t.trim().toLowerCase().includes(form.teamName.trim().toLowerCase())).length === 0 && (
+                            {suggestedTeams.filter(t => !form.teamName || t.trim().toLowerCase().includes(form.teamName.trim().toLowerCase())).length === 0 && (
                               <div className="px-4 py-3 text-xs text-slate-500 italic">Команда не найдена (будет создана новая)</div>
                             )}
                           </div>

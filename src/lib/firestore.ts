@@ -60,7 +60,7 @@ export async function saveSubmissionToFirestore(draft: ApplicationDraft): Promis
 /**
  * Fetches the latest submission for a specific team and stage
  */
-export async function getTeamSubmission(teamName: string, stage: 'qualifier' | 'final'): Promise<FirestoreSubmission | null> {
+export async function getTeamSubmission(teamName: string, stage: 'qualifier' | 'final', zone?: string): Promise<FirestoreSubmission | null> {
   try {
     const submissionsRef = collection(db, SUBMISSIONS_COLLECTION);
     const q = query(submissionsRef, orderBy('createdAt', 'desc'));
@@ -70,6 +70,9 @@ export async function getTeamSubmission(teamName: string, stage: 'qualifier' | '
     for (const doc of querySnapshot.docs) {
       const data = doc.data() as FirestoreSubmission;
       if (data.teamName.toLowerCase() === teamName.toLowerCase() && (data.stage || 'qualifier') === stage) {
+          if (zone && data.zone && data.zone.toLowerCase() !== zone.toLowerCase()) {
+              continue;
+          }
          return { id: doc.id, ...data };
       }
     }
@@ -100,12 +103,12 @@ export async function getSubmissionsFromFirestore(): Promise<FirestoreSubmission
 /**
  * Updates the sync/status flag of a submission
  */
-export async function updateSubmissionStatus(id: string, updates: Partial<Pick<FirestoreSubmission, 'status' | 'synced'>>): Promise<void> {
+export async function updateSubmissionData(id: string, updates: Partial<FirestoreSubmission>): Promise<void> {
   try {
     const docRef = doc(db, SUBMISSIONS_COLLECTION, id);
     await updateDoc(docRef, updates);
   } catch (err) {
-    console.error("Failed to update submission status in Firestore:", err);
+    console.error("Failed to update submission data in Firestore:", err);
     throw new Error(`Ошибка обновления Firestore: ${err instanceof Error ? err.message : String(err)}`);
   }
 }
