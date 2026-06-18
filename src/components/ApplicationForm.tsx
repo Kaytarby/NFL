@@ -6,6 +6,7 @@ import { Trophy, Upload, UserPlus, Check, X, AlertTriangle, Save, Loader2, Send,
 import clsx from 'clsx';
 import { getAuth } from 'firebase/auth';
 import { saveSubmissionToFirestore, getSubmissionsFromFirestore, updateSubmissionStatus, deleteSubmissionFromFirestore, getTeamSubmission, FirestoreSubmission } from '../lib/firestore';
+import * as XLSX from 'xlsx';
 
 const DRAFT_KEY = 'nfl_application_draft';
 
@@ -59,80 +60,67 @@ export default function ApplicationForm({ onLogout, isGuest = false, user = null
       return;
     }
 
-    let csvContent = "Район,Команда,Капитан,Телефон,ФИО Игрока,Дата рождения,Амплуа,Игровой номер,Тип Игрока,Заигран\n";
-
+    const rows: any[] = [];
     activeSubs.forEach(sub => {
       sub.players.forEach(p => {
-        const isLegString = p.isLegionnaire ? "Легионер" : "Обычный";
-        const isVerifiedString = p.isVerified ? "Заигран" : (p.fullName && dbPlayers.some(db => db.fullName.toLowerCase() === p.fullName?.toLowerCase()) ? "В базе" : "Новый");
-        const birthDateClean = p.birthDate ? p.birthDate.replace(/,/g, ' ') : '';
-        const fullNameClean = p.fullName ? p.fullName.replace(/,/g, ' ') : '';
-        const posClean = p.position ? p.position.replace(/,/g, ' ') : '';
-        const numClean = p.number ? p.number.replace(/,/g, ' ') : '';
+        const isLegString = p.isLegionnaire ? "Да" : "Нет";
+        const isVerifiedString = p.isVerified ? "Заигран" : (p.fullName && dbPlayers.some(db => db.fullName.toLowerCase() === p.fullName?.toLowerCase()) ? "Был в базе" : "Новый");
         
-        const row = [
-          sub.zone || '-',
-          sub.teamName || '',
-          sub.captainName || '',
-          sub.captainPhone || '',
-          fullNameClean,
-          birthDateClean,
-          posClean,
-          numClean,
-          isLegString,
-          isVerifiedString
-        ].map(v => `"${v.replace(/"/g, '""')}"`).join(",");
-        
-        csvContent += row + "\n";
+        const rowData: any = {
+          "Район": sub.zone || '-',
+          "Команда": sub.teamName || '',
+          "Капитан": sub.captainName || '',
+          "Телефон": sub.captainPhone || '',
+          "ФИО Игрока": p.fullName || '',
+          "Дата рождения": p.birthDate || '',
+          "Амплуа": p.position || '',
+          "Игровой номер": p.number || '',
+          "Легионер": isLegString,
+          "Заигран": isVerifiedString
+        };
+
+        if (adminStageTab === 'final') {
+           const mapStatus = { 'current': 'Текущий', 'new': 'Новый', 'other_zone': 'Др. Зона' };
+           rowData["Статус (Финал)"] = p.transferStatus ? (mapStatus[p.transferStatus] || p.transferStatus) : 'Текущий';
+        }
+
+        rows.push(rowData);
       });
     });
 
-    const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", `NFL_Submissions_${adminTab === 'approved' ? 'Approved' : 'Drafts'}_${new Date().toISOString().slice(0,10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Заявки");
+    XLSX.writeFile(workbook, `NFL_${adminStageTab}_${adminTab === 'approved' ? 'Approved' : 'Drafts'}_${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
 
   const handleExportTeamToExcel = (sub: FirestoreSubmission) => {
-    let csvContent = `Заявка команды: ${sub.teamName}\n`;
-    csvContent += `Район: ${sub.zone}\n`;
-    csvContent += `Капитан: ${sub.captainName}\n`;
-    csvContent += `Телефон: ${sub.captainPhone}\n\n`;
-    csvContent += "№,ФИО Игрока,Дата рождения,Амплуа,Игровой номер,Тип Игрока,Заигран\n";
-
-    sub.players.forEach((p, idx) => {
-      const isLegString = p.isLegionnaire ? "Легионер" : "Обычный";
+    const rows = sub.players.map((p, idx) => {
+      const isLegString = p.isLegionnaire ? "Да" : "Нет";
       const isVerifiedString = p.isVerified ? "Заигран" : (p.fullName && dbPlayers.some(db => db.fullName.toLowerCase() === p.fullName?.toLowerCase()) ? "В базе" : "Новый");
-      const birthDateClean = p.birthDate ? p.birthDate.replace(/,/g, ' ') : '';
-      const fullNameClean = p.fullName ? p.fullName.replace(/,/g, ' ') : '';
-      const posClean = p.position ? p.position.replace(/,/g, ' ') : '';
-      const numClean = p.number ? p.number.replace(/,/g, ' ') : '';
-
-      const row = [
-        idx + 1,
-        fullNameClean,
-        birthDateClean,
-        posClean,
-        numClean,
-        isLegString,
-        isVerifiedString
-      ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(",");
       
-      csvContent += row + "\n";
+      const rowData: any = {
+        "№": idx + 1,
+        "ФИО Игрока": p.fullName || '',
+        "Дата рождения": p.birthDate || '',
+        "Амплуа": p.position || '',
+        "Игровой номер": p.number || '',
+        "Легионер": isLegString,
+        "Заигран": isVerifiedString
+      };
+
+      if ((sub.stage || 'qualifier') === 'final') {
+         const mapStatus = { 'current': 'Текущий', 'new': 'Новый', 'other_zone': 'Др. Зона' };
+         rowData["Статус (Финал)"] = p.transferStatus ? (mapStatus[p.transferStatus] || p.transferStatus) : 'Текущий';
+      }
+
+      return rowData;
     });
 
-    const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", `NFL_Team_${sub.teamName.replace(/\s+/g, '_')}_Excel.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Состав");
+    XLSX.writeFile(workbook, `NFL_Team_${sub.teamName.replace(/\s+/g, '_')}_Excel.xlsx`);
   };
 
   const handlePrintAllToPdf = () => {
@@ -400,9 +388,13 @@ export default function ApplicationForm({ onLogout, isGuest = false, user = null
   };
 
   const handleTeamSelect = async (name: string) => {
-    // If we are in 'final', try to fetch latest 'qualifier'
+    // If we are in 'final', try to fetch latest 'final', then fallback to 'qualifier'
     if (stage === 'final') {
-      const prevSub = await getTeamSubmission(name, 'qualifier');
+      let prevSub = await getTeamSubmission(name, 'final');
+      if (!prevSub) {
+        prevSub = await getTeamSubmission(name, 'qualifier');
+      }
+      
       if (prevSub) {
         setForm(prev => ({
           ...prev,
@@ -1857,7 +1849,7 @@ _________________ / _________________________________ (Подпись / ФИО)
                 </h2>
                 <div className="w-20 h-[1.5px] bg-black mx-auto my-2.5" />
                 <p className="text-[9px] uppercase font-mono tracking-widest text-slate-500">
-                  ОТБОРОЧНЫЙ ЭТАП • ФЕДЕРАЦИЯ ЛЮБИТЕЛЬСКОГО ФУТБОЛА
+                  {(sub.stage || 'qualifier') === 'final' ? 'ФИНАЛЬНЫЙ ЭТАП' : 'ОТБОРОЧНЫЙ ЭТАП'} • ФЕДЕРАЦИЯ ЛЮБИТЕЛЬСКОГО ФУТБОЛА
                 </p>
               </div>
             </div>
@@ -1904,9 +1896,12 @@ _________________ / _________________________________ (Подпись / ФИО)
                     <th className="py-1.5 px-1 border-r border-black/20 text-center w-8">№</th>
                     <th className="py-1.5 px-2 border-r border-black/20">ФИО Игрока</th>
                     <th className="py-1.5 px-2 border-r border-black/20 w-24 text-center">Дата рождения</th>
-                    <th className="py-1.5 px-2 border-r border-black/20 w-28 text-center">Амплуа</th>
-                    <th className="py-1.5 px-2 border-r border-black/20 text-center w-16">Номер</th>
-                    <th className="py-1.5 px-2 text-center w-28">Тип</th>
+                    <th className="py-1.5 px-2 border-r border-black/20 w-24 text-center">Амплуа</th>
+                    <th className="py-1.5 px-2 border-r border-black/20 text-center w-12">Номер</th>
+                    <th className="py-1.5 px-2 border-r border-black/20 text-center w-20">Тип</th>
+                    {(sub.stage || 'qualifier') === 'final' && (
+                      <th className="py-1.5 px-2 text-center w-24 border-black/20">Статус (Финал)</th>
+                    )}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-black/10">
@@ -1917,11 +1912,11 @@ _________________ / _________________________________ (Подпись / ФИО)
                       <td className="py-1.5 px-2 border-r border-black/10 text-center font-mono text-slate-700">{p.birthDate || '-'}</td>
                       <td className="py-1.5 px-2 border-r border-black/10 text-center text-slate-800">{p.position || '-'}</td>
                       <td className="py-1.5 px-2 border-r border-black/10 text-center font-mono font-bold text-black">#{p.number || '-'}</td>
-                      <td className="py-1.5 px-2 text-center text-[10px] font-mono">
+                      <td className={`py-1.5 px-2 text-center text-[10px] font-mono ${(sub.stage || 'qualifier') === 'final' ? 'border-r border-black/10' : ''}`}>
                         {p.isLegionnaire ? (
-                          <strong className="text-red-700">ЛЕГИОНЕР</strong>
+                          <strong className="text-red-700">ЛЕГ</strong>
                         ) : (
-                          <span className="text-slate-500">Обычный</span>
+                          <span className="text-slate-500">ОБЫЧНЫЙ</span>
                         )}
                         {p.isVerified ? (
                           <span className="text-emerald-700 font-extrabold ml-1" title="Заигран">✓</span>
@@ -1931,6 +1926,11 @@ _________________ / _________________________________ (Подпись / ФИО)
                           )
                         )}
                       </td>
+                      {(sub.stage || 'qualifier') === 'final' && (
+                        <td className="py-1.5 px-2 text-center text-[10px] font-mono font-bold text-slate-700">
+                          {p.transferStatus === 'new' ? 'НОВЫЙ' : p.transferStatus === 'other_zone' ? 'ДР. ЗОНА' : 'ТЕКУЩИЙ'}
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
