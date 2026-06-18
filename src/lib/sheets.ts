@@ -25,6 +25,7 @@ export interface Player {
   status: 'previous' | 'new' | 'deleted';
   isLegionnaire?: boolean;
   isVerified?: boolean; // "заигран" (documents verified)
+  transferStatus?: 'current' | 'new' | 'other_zone';
 }
 
 export interface ApplicationDraft {
@@ -35,6 +36,7 @@ export interface ApplicationDraft {
   logoUrl: string | null;
   players: Player[];
   version?: number;
+  stage?: 'qualifier' | 'final';
 }
 
 // Helper to parse sheet ranges like "'Teams'!A:A" or "Players!A:E"

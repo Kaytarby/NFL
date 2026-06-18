@@ -24,6 +24,9 @@ export default function App() {
   const isAdminRequest = typeof window !== 'undefined' && 
     (window.location.search.includes('admin=true') || window.location.search.includes('admin'));
 
+  const stageMatch = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('stage') : null;
+  const initialStage = stageMatch === 'final' ? 'final' : (stageMatch === 'qualifier' ? 'qualifier' : undefined);
+
   useEffect(() => {
     if (!isAdminRequest) {
       setIsGuest(true);
@@ -95,6 +98,7 @@ export default function App() {
       isGuest={isGuest || (!user)}
       user={user}
       defaultShowAdmin={!!isActuallyAdmin}
+      initialStage={initialStage}
       onLogout={() => {
         if (user) {
           logout();

@@ -5,7 +5,7 @@ import { sendNotificationEmail } from '../lib/gmail';
 import { Trophy, Upload, UserPlus, Check, X, AlertTriangle, Save, Loader2, Send, Shield, ListTodo, RefreshCw, Layers, Search, Users, Award, Flame, ChevronRight, Info, LayoutDashboard, Plus, ChevronDown, FileSpreadsheet, Printer, FileDown, FileText, Trash2 } from 'lucide-react';
 import clsx from 'clsx';
 import { getAuth } from 'firebase/auth';
-import { saveSubmissionToFirestore, getSubmissionsFromFirestore, updateSubmissionStatus, deleteSubmissionFromFirestore, FirestoreSubmission } from '../lib/firestore';
+import { saveSubmissionToFirestore, getSubmissionsFromFirestore, updateSubmissionStatus, deleteSubmissionFromFirestore, getTeamSubmission, FirestoreSubmission } from '../lib/firestore';
 
 const DRAFT_KEY = 'nfl_application_draft';
 
@@ -14,9 +14,12 @@ interface ApplicationFormProps {
   isGuest?: boolean;
   user?: any;
   defaultShowAdmin?: boolean;
+  initialStage?: 'qualifier' | 'final';
 }
 
-export default function ApplicationForm({ onLogout, isGuest = false, user = null, defaultShowAdmin = false }: ApplicationFormProps) {
+export default function ApplicationForm({ onLogout, isGuest = false, user = null, defaultShowAdmin = false, initialStage }: ApplicationFormProps) {
+  const [stage, setStage] = useState<'qualifier' | 'final' | null>(initialStage || null);
+  const [adminStageTab, setAdminStageTab] = useState<'qualifier' | 'final'>('qualifier');
   const [loadingInitial, setLoadingInitial] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [draftSaving, setDraftSaving] = useState(false);
@@ -50,7 +53,7 @@ export default function ApplicationForm({ onLogout, isGuest = false, user = null
   }, []);
 
   const handleExportAllToExcel = () => {
-    const activeSubs = submissions.filter(s => adminTab === 'approved' ? s.synced : !s.synced);
+    const activeSubs = submissions.filter(s => (adminTab === 'approved' ? s.synced : !s.synced) && (s.stage || 'qualifier') === adminStageTab);
     if (activeSubs.length === 0) {
       alert("Нет заявок для экспорта");
       return;
@@ -133,7 +136,7 @@ export default function ApplicationForm({ onLogout, isGuest = false, user = null
   };
 
   const handlePrintAllToPdf = () => {
-    const activeSubs = submissions.filter(s => adminTab === 'approved' ? s.synced : !s.synced);
+    const activeSubs = submissions.filter(s => (adminTab === 'approved' ? s.synced : !s.synced) && (s.stage || 'qualifier') === adminStageTab);
     if (activeSubs.length === 0) {
       alert("Нет заявок для печати");
       return;
@@ -396,20 +399,37 @@ export default function ApplicationForm({ onLogout, isGuest = false, user = null
     setForm(prev => ({ ...prev, teamName: newTeamName }));
   };
 
-  const handleTeamSelect = (name: string) => {
+  const handleTeamSelect = async (name: string) => {
+    // If we are in 'final', try to fetch latest 'qualifier'
+    if (stage === 'final') {
+      const prevSub = await getTeamSubmission(name, 'qualifier');
+      if (prevSub) {
+        setForm(prev => ({
+          ...prev,
+          teamName: name,
+          zone: prevSub.zone,
+          captainName: prevSub.captainName,
+          captainPhone: prevSub.captainPhone,
+          logoUrl: prevSub.logoUrl,
+          players: prevSub.players.filter(p => p.status !== 'deleted').map(p => ({
+            ...p,
+            id: Math.random().toString(36).substring(7),
+            isConfirmed: true,
+            status: 'previous' as const
+          }))
+        }));
+        if (prevSub.logoUrl) setLogoPreview(prevSub.logoUrl);
+        return;
+      }
+    }
+
     setForm(prev => {
-      // Find players for this team
+      // Find players for this team from Sheets baseline
       const existingTeamPlayers = dbPlayers.filter(p => p.teamName.trim().toLowerCase() === name.trim().toLowerCase());
       
       const newPlayersStr = existingTeamPlayers.map(p => ({
+        ...p,
         id: Math.random().toString(36).substring(7),
-        teamName: p.teamName,
-        fullName: p.fullName,
-        birthDate: p.birthDate,
-        position: p.position,
-        number: p.number,
-        isLegionnaire: p.isLegionnaire,
-        isVerified: p.isVerified,
         isConfirmed: true,
         status: 'previous' as const
       }));
@@ -602,6 +622,42 @@ export default function ApplicationForm({ onLogout, isGuest = false, user = null
       return;
     }
 
+    // 5. Final Stage Transfer Rules
+    if (stage === 'final') {
+      const missingStatus = activePlayers.filter(p => !p.transferStatus);
+      if (missingStatus.length > 0) {
+        setErrorModal({
+          isOpen: true,
+          title: "Заполните статусы изменений",
+          message: "При заявке на Финал необходимо обязательно указать статус (Текущий, Новый, Из другой зоны) у каждого футболиста состава.",
+          steps: [
+            "Проверьте, что во всех анкетах игроков заполнено поле 'Статус игрока относительно отборочного этапа'"
+          ]
+        });
+        return;
+      }
+      
+      const newPlayers = activePlayers.filter(p => p.transferStatus === 'new' || p.transferStatus === 'other_zone');
+      const otherZone = activePlayers.filter(p => p.transferStatus === 'other_zone');
+
+      if (newPlayers.length > 5 || otherZone.length > 3) {
+        const errorMsg = [];
+        if (newPlayers.length > 5) errorMsg.push(`Новых изменений всего заявлено ${newPlayers.length} (максимум разрешено 5).`);
+        if (otherZone.length > 3) errorMsg.push(`Заиграно из другой зоны ${otherZone.length} (максимум разрешено 3).`);
+
+        setErrorModal({
+          isOpen: true,
+          title: "Превышен лимит замен",
+          message: "В Финале заявки действуют жесткие ограничения на изменения относительно основного отборочного состава.",
+          steps: [
+            ...errorMsg,
+            "Измените статусы или уберите лишних 'новых' и 'других зон'."
+          ]
+        });
+        return;
+      }
+    }
+
     const finalConfirmMsg = `Подтверждаете отправку заявки для команды "${form.teamName}" (заявлено ${activeCount} игроков) на сезон 2026?`;
     if (!window.confirm(finalConfirmMsg)) return;
 
@@ -615,7 +671,8 @@ export default function ApplicationForm({ onLogout, isGuest = false, user = null
         ...form,
         logoUrl: null,
         players: activePlayers,
-        version: draftVersion
+        version: draftVersion,
+        stage: stage || 'qualifier'
       };
 
       if (isGuest) {
@@ -850,31 +907,56 @@ export default function ApplicationForm({ onLogout, isGuest = false, user = null
               </div>
             ) : (
               <div className="space-y-6">
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+                <div className="flex flex-col gap-4 mb-6">
+                  {/* ADMIN STAGE SELECTOR */}
                   <div className="flex bg-slate-900 border border-white/5 rounded-xl p-1 w-full max-w-sm">
                     <button
                       type="button"
-                      onClick={() => setAdminTab('drafts')}
+                      onClick={() => setAdminStageTab('qualifier')}
                       className={clsx(
                         "flex-1 py-2 text-xs font-bold rounded-lg transition-all",
-                        adminTab === 'drafts' ? "bg-slate-800 text-white shadow" : "text-slate-400 hover:text-slate-300"
+                        adminStageTab === 'qualifier' ? "bg-slate-800 text-white shadow" : "text-slate-400 hover:text-slate-300"
                       )}
                     >
-                      Черновики ({submissions.filter(s => !s.synced).length})
+                      Режим: Отбор
                     </button>
                     <button
                       type="button"
-                      onClick={() => setAdminTab('approved')}
+                      onClick={() => setAdminStageTab('final')}
                       className={clsx(
                         "flex-1 py-2 text-xs font-bold rounded-lg transition-all",
-                        adminTab === 'approved' ? "bg-slate-800 text-green-400 shadow" : "text-slate-400 hover:text-green-400/50"
+                        adminStageTab === 'final' ? "bg-slate-800 text-[#c5a85c] shadow" : "text-slate-400 hover:text-[#c5a85c]/50"
                       )}
                     >
-                      Согласованные ({submissions.filter(s => s.synced).length})
+                      Режим: Финал
                     </button>
                   </div>
 
-                  <div className="flex flex-wrap gap-2.5">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div className="flex bg-slate-900 border border-white/5 rounded-xl p-1 w-full max-w-sm">
+                      <button
+                        type="button"
+                        onClick={() => setAdminTab('drafts')}
+                        className={clsx(
+                          "flex-1 py-2 text-xs font-bold rounded-lg transition-all",
+                          adminTab === 'drafts' ? "bg-slate-800 text-white shadow" : "text-slate-400 hover:text-slate-300"
+                        )}
+                      >
+                        Черновики ({submissions.filter(s => !s.synced && (s.stage || 'qualifier') === adminStageTab).length})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAdminTab('approved')}
+                        className={clsx(
+                          "flex-1 py-2 text-xs font-bold rounded-lg transition-all",
+                          adminTab === 'approved' ? "bg-slate-800 text-green-400 shadow" : "text-slate-400 hover:text-green-400/50"
+                        )}
+                      >
+                        Согласованные ({submissions.filter(s => s.synced && (s.stage || 'qualifier') === adminStageTab).length})
+                      </button>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2.5">
                     <button
                       type="button"
                       onClick={handleExportAllToExcel}
@@ -893,9 +975,10 @@ export default function ApplicationForm({ onLogout, isGuest = false, user = null
                     </button>
                   </div>
                 </div>
+                </div>
                 
                 {(() => {
-                   const visibleSubmissions = submissions.filter(s => adminTab === 'approved' ? s.synced : !s.synced);
+                   const visibleSubmissions = submissions.filter(s => (adminTab === 'approved' ? s.synced : !s.synced) && (s.stage || 'qualifier') === adminStageTab);
                    if (visibleSubmissions.length === 0) {
                      return (
                        <div className="text-center py-20 bg-slate-950/40 rounded-2xl border border-white/5 border-dashed">
@@ -1040,6 +1123,16 @@ export default function ApplicationForm({ onLogout, isGuest = false, user = null
                                                 ЛЕГ
                                               </span>
                                             )}
+                                            {p.transferStatus === 'new' && (
+                                              <span className="text-cyan-400 border border-cyan-500/30 bg-cyan-500/10 px-1 rounded-sm text-[8px] font-bold" title="Новый игрок">
+                                                НОВ.
+                                              </span>
+                                            )}
+                                            {p.transferStatus === 'other_zone' && (
+                                              <span className="text-amber-400 border border-amber-500/30 bg-amber-500/10 px-1 rounded-sm text-[8px] font-bold" title="Заигран в другой зоне">
+                                                ДР.З.
+                                              </span>
+                                            )}
                                             {p.isVerified ? (
                                               <span className="w-1.5 h-1.5 bg-green-500 rounded-full" title="Заигран"></span>
                                             ) : (
@@ -1076,6 +1169,31 @@ export default function ApplicationForm({ onLogout, isGuest = false, user = null
               </div>
             )}
 
+          </div>
+        ) : !stage ? (
+          <div className="flex flex-col items-center justify-center py-20 px-4 min-h-[50vh]">
+            <div className="bg-slate-900 border border-slate-700 p-8 rounded-2xl max-w-lg w-full text-center shadow-2xl relative overflow-hidden">
+               <div className="absolute top-0 right-0 w-48 h-full bg-[radial-gradient(circle_at_right,_var(--tw-gradient-stops))] from-[#c5a85c]/10 to-transparent pointer-events-none rounded-r-2xl" />
+               <Trophy className="w-16 h-16 text-[#c5a85c] mx-auto mb-6" />
+               <h2 className="text-2xl font-extrabold text-white mb-2 font-display">Выберите этап турнира</h2>
+               <p className="text-slate-400 text-sm mb-8">Для правильного формирования заявки выберите этап, на который подается состав команды.</p>
+               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
+                 <button 
+                   onClick={() => setStage('qualifier')}
+                   className="flex flex-col items-center justify-center bg-slate-950 border border-slate-700 hover:border-blue-500 hover:bg-blue-900/20 text-white p-6 rounded-xl transition-all cursor-pointer group shadow-lg"
+                 >
+                   <span className="text-lg font-bold group-hover:text-cyan-400 transition-colors">Отборочный Этап</span>
+                   <span className="text-xs text-slate-500 mt-2">Формирование базового состава</span>
+                 </button>
+                 <button 
+                   onClick={() => setStage('final')}
+                   className="flex flex-col items-center justify-center bg-slate-950 border border-slate-700 hover:border-[#c5a85c] hover:bg-[#c5a85c]/10 text-white p-6 rounded-xl transition-all cursor-pointer group shadow-lg"
+                 >
+                   <span className="text-lg font-bold group-hover:text-[#c5a85c] transition-colors">Финальный Этап</span>
+                   <span className="text-xs text-slate-500 mt-2">Дозаявки и изменения статусов</span>
+                 </button>
+               </div>
+            </div>
           </div>
         ) : (
           <>
@@ -1550,6 +1668,32 @@ _________________ / _________________________________ (Подпись / ФИО)
                                </button>
                              </div>
                            </div>
+                           
+                           {/* Transfer Status Field for Final stage */}
+                           {stage === 'final' && (
+                             <div className="w-full mt-2 pt-2 border-t border-white/5">
+                               <label className="block text-[9px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                                 Статус игрока относительно отборочного этапа
+                               </label>
+                               <select
+                                 required
+                                 value={player.transferStatus || ""}
+                                 onChange={(e) => updatePlayer(player.id, 'transferStatus', e.target.value as Player['transferStatus'])}
+                                 className={clsx(
+                                   "w-full border rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:border-transparent transition-all",
+                                   player.transferStatus === 'new' ? "bg-cyan-500/10 text-cyan-400 border-cyan-500/30 focus:ring-cyan-500" :
+                                   player.transferStatus === 'other_zone' ? "bg-amber-500/10 text-amber-400 border-amber-500/30 focus:ring-amber-500" :
+                                   player.transferStatus === 'current' ? "bg-slate-900 border-white/5 text-slate-200 focus:ring-[#c5a85c]" :
+                                   "bg-red-500/10 border-red-500/50 text-red-300 focus:ring-red-500"
+                                 )}
+                               >
+                                 <option value="" disabled className="text-slate-500 bg-slate-950">ВЫБЕРИТЕ СТАТУС Изменения...</option>
+                                 <option value="current" className="text-slate-200 bg-slate-950">Игрок текущего состава</option>
+                                 <option value="new" className="text-cyan-400 bg-slate-950">Новый игрок (относительно отбора)</option>
+                                 <option value="other_zone" className="text-amber-400 bg-slate-950">Заигран в другой зоне</option>
+                               </select>
+                             </div>
+                           )}
                          </div>
                        </div>
                     </div>

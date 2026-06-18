@@ -13,6 +13,7 @@ export interface FirestoreSubmission {
   createdAt: string;
   status: 'pending' | 'approved' | 'rejected';
   synced: boolean;
+  stage?: 'qualifier' | 'final';
 }
 
 const SUBMISSIONS_COLLECTION = 'submissions';
@@ -44,7 +45,8 @@ export async function saveSubmissionToFirestore(draft: ApplicationDraft): Promis
       players: draft.players,
       createdAt: new Date().toISOString(),
       status: 'pending',
-      synced: false
+      synced: false,
+      stage: draft.stage || 'qualifier'
     };
 
     const docRef = await addDoc(collection(db, SUBMISSIONS_COLLECTION), submissionData);
@@ -52,6 +54,29 @@ export async function saveSubmissionToFirestore(draft: ApplicationDraft): Promis
   } catch (err) {
     console.error("Failed to save submission to Firestore:", err);
     throw new Error(`Ошибка сохранения в Firestore: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+/**
+ * Fetches the latest submission for a specific team and stage
+ */
+export async function getTeamSubmission(teamName: string, stage: 'qualifier' | 'final'): Promise<FirestoreSubmission | null> {
+  try {
+    const submissionsRef = collection(db, SUBMISSIONS_COLLECTION);
+    const q = query(submissionsRef, orderBy('createdAt', 'desc'));
+    const querySnapshot = await getDocs(q);
+    
+    // We filter client-side to avoid needing a composite index
+    for (const doc of querySnapshot.docs) {
+      const data = doc.data() as FirestoreSubmission;
+      if (data.teamName.toLowerCase() === teamName.toLowerCase() && (data.stage || 'qualifier') === stage) {
+         return { id: doc.id, ...data };
+      }
+    }
+    return null;
+  } catch (err) {
+    console.error("Failed to fetch team submission:", err);
+    return null;
   }
 }
 
