@@ -37,6 +37,9 @@ export default function ApplicationForm({ onLogout, isGuest = false, user = null
   const [finalDate, setFinalDate] = useState<string>(() => {
     return localStorage.getItem('NFL_FINAL_DATE') || '01.06.2026';
   });
+  const [deadlineDate, setDeadlineDate] = useState<string>(() => {
+    return localStorage.getItem('NFL_DEADLINE_DATE') || '';
+  });
   const [adminTab, setAdminTab] = useState<'drafts' | 'approved'>('drafts');
   const [openSubmissionId, setOpenSubmissionId] = useState<string | null>(null);
   const [expandedAdminZones, setExpandedAdminZones] = useState<Record<string, boolean>>({});
@@ -372,6 +375,33 @@ export default function ApplicationForm({ onLogout, isGuest = false, user = null
     
     const index = teamSubs.findIndex(s => s.id === sub.id);
     return index !== -1 ? index + 1 : 1;
+  };
+
+  const isPlayerNewlyAdded = (sub: FirestoreSubmission, playerName: string) => {
+    if (!sub.createdAt) return false;
+    const subTime = new Date(sub.createdAt).getTime();
+
+    const priorSubmissions = submissions.filter(s => 
+      s.teamName.toLowerCase() === sub.teamName.toLowerCase() && 
+      s.createdAt && new Date(s.createdAt).getTime() < subTime
+    );
+
+    if (priorSubmissions.length === 0) return false;
+
+    const nameClean = playerName.trim().toLowerCase();
+    for (const priorSub of priorSubmissions) {
+      if (priorSub.players.some(p => p.fullName.trim().toLowerCase() === nameClean)) {
+        return false;
+      }
+    }
+
+    return true;
+  };
+
+  const parseDDMMYYYYToTime = (dateStr: string) => {
+    if (!dateStr || dateStr.length !== 10) return 0;
+    const [d, m, y] = dateStr.split('.');
+    return new Date(`${y}-${m}-${d}T23:59:59.999Z`).getTime(); 
   };
 
   const getPlayerApprovedTeam = (fullName: string | undefined, currentTeamName: string): string | null => {
@@ -898,6 +928,44 @@ export default function ApplicationForm({ onLogout, isGuest = false, user = null
               </div>
             </div>
 
+            {/* Deadline Configuration */}
+            <div className="bg-slate-950/60 backdrop-blur-md border border-white/5 rounded-2xl p-5 shadow-xl relative mt-6 mb-6">
+              <div className="absolute top-0 left-6 w-16 h-[2px] bg-gradient-to-r from-orange-500 to-transparent" />
+              <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+                <span className="flex h-2 w-2 relative">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-orange-500"></span>
+                </span>
+                ⏳ Дедлайн (Окончание трансферного окна)
+              </h3>
+              <p className="text-xs text-slate-400 mb-4">
+                Заявки, поданные после этой даты, будут проверяться на наличие новых игроков (по сравнению с прошлыми версиями заявки этой же команды). Новые игроки будут выделены цветом.
+              </p>
+              
+              <div className="bg-slate-900 border border-white/5 rounded-xl p-4 flex items-center justify-between gap-3 max-w-sm">
+                <span className="text-sm font-semibold text-slate-300">Дата Дедлайна</span>
+                <div className="flex items-center gap-1 shrink-0">
+                  <input 
+                    type="text"
+                    placeholder="ДД.ММ.ГГГГ"
+                    value={deadlineDate}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      const digits = val.replace(/\D/g, '').substring(0, 8);
+                      let formatted = '';
+                      if (digits.length > 0) formatted += digits.substring(0, 2);
+                      if (digits.length > 2) formatted += '.' + digits.substring(2, 4);
+                      if (digits.length > 4) formatted += '.' + digits.substring(4, 8);
+                      
+                      setDeadlineDate(formatted);
+                      localStorage.setItem('NFL_DEADLINE_DATE', formatted);
+                    }}
+                    className="w-[100px] bg-slate-950 border border-white/5 rounded px-2 py-1.5 text-center font-mono text-[13px] text-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400"
+                  />
+                </div>
+              </div>
+            </div>
+
             {/* Dynamic Tournament Dates Configuration */}
             <div className="bg-slate-950/60 backdrop-blur-md border border-white/5 rounded-2xl p-5 shadow-xl relative">
               <div className="absolute top-0 left-6 w-16 h-[2px] bg-gradient-to-r from-blue-500 to-transparent" />
@@ -1191,6 +1259,10 @@ export default function ApplicationForm({ onLogout, isGuest = false, user = null
                                     </h4>
                                     {sub.players.map((p, idx) => {
                                       const duplicateInTeam = getPlayerApprovedTeam(p.fullName, sub.teamName);
+                                      const isAfterDeadlineMatch = deadlineDate?.length === 10 ? new Date(sub.createdAt || 0).getTime() > parseDDMMYYYYToTime(deadlineDate) : false;
+                                      const isNewAddition = isPlayerNewlyAdded(sub, p.fullName);
+                                      const requiresFee = isAfterDeadlineMatch && isNewAddition;
+                                      
                                       return (
                                         <div 
                                           key={p.id || idx} 
@@ -1198,19 +1270,24 @@ export default function ApplicationForm({ onLogout, isGuest = false, user = null
                                             "grid grid-cols-[16px_1fr_60px_40px_35px] md:grid-cols-[20px_1fr_80px_60px_40px] items-center text-[10px] md:text-xs p-1.5 rounded-lg transition-colors border",
                                             duplicateInTeam 
                                               ? "bg-red-950/40 border-red-500/20 text-red-200 shadow-[0_0_15px_rgba(239,68,68,0.15)]" 
-                                              : "hover:bg-white/5 border-transparent text-slate-300"
+                                              : requiresFee
+                                                ? "bg-orange-950/40 border-orange-500/20 text-orange-200 shadow-[0_0_15px_rgba(249,115,22,0.15)]"
+                                                : "hover:bg-white/5 border-transparent text-slate-300"
                                           )}
                                         >
-                                          <span className="text-slate-600 font-mono">{idx + 1}.</span>
+                                          <span className={clsx("font-mono", requiresFee ? "text-orange-400" : "text-slate-600")}>{idx + 1}.</span>
                                           <span className={clsx(
                                             "font-semibold truncate pr-2 flex flex-wrap items-center gap-1.5",
-                                            duplicateInTeam ? "text-red-300 font-extrabold" : "text-slate-300"
+                                            duplicateInTeam ? "text-red-300 font-extrabold" : (requiresFee ? "text-orange-300 font-extrabold" : "text-slate-300")
                                           )}>
                                             {p.fullName || 'Без имени'}
                                             {p.isLegionnaire && (
                                               <span className="text-red-400 border border-red-500/30 bg-red-500/10 px-1 rounded-sm text-[8px] font-bold" title="Легионер">
                                                 ЛЕГ
                                               </span>
+                                            )}
+                                            {requiresFee && (
+                                              <span className="bg-orange-600/30 text-orange-400 border border-orange-500/40 text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider ml-1 whitespace-nowrap" title="Изменение внесено после дедлайна - может требоваться комиссия">АПДЕЙТ+</span>
                                             )}
                                             {p.transferStatus === 'new' && (
                                               <span className="text-cyan-400 border border-cyan-500/30 bg-cyan-500/10 px-1 rounded-sm text-[8px] font-bold" title="Новый игрок">
