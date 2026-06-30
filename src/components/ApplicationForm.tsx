@@ -1676,7 +1676,7 @@ export default function ApplicationForm({ onLogout, isGuest = false, user = null
                              {isPrevious ? "Игрок архивного состава (из базы данных)" : "Новый футболист"}
                            </div>
 
-                           <div className="flex flex-col md:flex-row md:items-start gap-3 w-full">
+                           <div className="flex flex-col md:flex-row md:items-start md:flex-wrap gap-3 w-full">
                              {/* Name, full width on mobile */}
                              <div className="w-full md:flex-1 relative pt-1">
                                <label className="flex flex-wrap items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-0.5">
