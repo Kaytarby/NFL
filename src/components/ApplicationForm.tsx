@@ -383,16 +383,25 @@ export default function ApplicationForm({ onLogout, isGuest = false, user = null
 
     const priorSubmissions = submissions.filter(s => 
       s.teamName.toLowerCase() === sub.teamName.toLowerCase() && 
+      (s.stage || 'qualifier') === (sub.stage || 'qualifier') &&
       s.createdAt && new Date(s.createdAt).getTime() < subTime
     );
 
-    if (priorSubmissions.length === 0) return false;
-
     const nameClean = playerName.trim().toLowerCase();
-    for (const priorSub of priorSubmissions) {
-      if (priorSub.players.some(p => p.fullName.trim().toLowerCase() === nameClean)) {
-        return false;
+
+    if (priorSubmissions.length > 0) {
+      for (const priorSub of priorSubmissions) {
+        if (priorSub.players.some(p => p.fullName.trim().toLowerCase() === nameClean)) {
+          return false;
+        }
       }
+      return true;
+    }
+
+    const existingTeamPlayers = dbPlayers.filter(p => p.teamName.trim().toLowerCase() === sub.teamName.trim().toLowerCase());
+    
+    if (existingTeamPlayers.some(p => p.fullName.trim().toLowerCase() === nameClean)) {
+      return false;
     }
 
     return true;
@@ -456,31 +465,47 @@ export default function ApplicationForm({ onLogout, isGuest = false, user = null
   };
 
   const handleTeamSelect = async (name: string) => {
-    // If we are in 'final', try to fetch latest 'final', then fallback to 'qualifier'
+    // Try to fetch previous submission from local submissions state
+    let prevSub = null;
+    const nameClean = name.trim().toLowerCase();
+    const zoneFilter = form.zone ? form.zone.trim().toLowerCase() : null;
+
+    const matchedSubs = submissions.filter(s => {
+       if (s.teamName.trim().toLowerCase() !== nameClean) return false;
+       if (zoneFilter && s.zone && s.zone.trim().toLowerCase() !== zoneFilter) return false;
+       return true;
+    }).sort((a, b) => {
+       const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+       const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+       return timeB - timeA; // desc
+    });
+    
     if (stage === 'final') {
-      let prevSub = await getTeamSubmission(name, 'final', form.zone || undefined);
+      prevSub = matchedSubs.find(s => (s.stage || 'qualifier') === 'final');
       if (!prevSub) {
-        prevSub = await getTeamSubmission(name, 'qualifier', form.zone || undefined);
+        prevSub = matchedSubs.find(s => (s.stage || 'qualifier') === 'qualifier');
       }
-      
-      if (prevSub) {
-        setForm(prev => ({
-          ...prev,
-          teamName: name,
-          zone: prevSub.zone,
-          captainName: prevSub.captainName,
-          captainPhone: prevSub.captainPhone,
-          logoUrl: prevSub.logoUrl,
-          players: prevSub.players.filter(p => p.status !== 'deleted').map(p => ({
-            ...p,
-            id: Math.random().toString(36).substring(7),
-            isConfirmed: true,
-            status: 'previous' as const
-          }))
-        }));
-        if (prevSub.logoUrl) setLogoPreview(prevSub.logoUrl);
-        return;
-      }
+    } else {
+      prevSub = matchedSubs.find(s => (s.stage || 'qualifier') === 'qualifier');
+    }
+    
+    if (prevSub) {
+      setForm(prev => ({
+        ...prev,
+        teamName: name,
+        zone: prevSub?.zone || prev.zone,
+        captainName: prevSub?.captainName || '',
+        captainPhone: prevSub?.captainPhone || '',
+        logoUrl: prevSub?.logoUrl || '',
+        players: (prevSub?.players || []).filter(p => p.status !== 'deleted').map(p => ({
+          ...p,
+          id: Math.random().toString(36).substring(7),
+          isConfirmed: true,
+          status: 'previous' as const
+        }))
+      }));
+      if (prevSub.logoUrl) setLogoPreview(prevSub.logoUrl);
+      return;
     }
 
     setForm(prev => {
@@ -1485,7 +1510,7 @@ export default function ApplicationForm({ onLogout, isGuest = false, user = null
                             )}
                           </div>
                         )}
-                        {dbTeams.find(t => t.trim().toLowerCase() === form.teamName.trim().toLowerCase()) && (
+                        {suggestedTeams.find(t => t.trim().toLowerCase() === form.teamName.trim().toLowerCase()) && (
                           <button 
                              id="load-prev-squad-btn"
                              type="button"
