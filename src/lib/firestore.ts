@@ -69,10 +69,8 @@ export async function getTeamSubmission(teamName: string, stage: 'qualifier' | '
     // We filter client-side to avoid needing a composite index
     for (const doc of querySnapshot.docs) {
       const data = doc.data() as FirestoreSubmission;
-      if (data.teamName.toLowerCase() === teamName.toLowerCase() && (data.stage || 'qualifier') === stage) {
-          if (zone && data.zone && data.zone.toLowerCase() !== zone.toLowerCase()) {
-              continue;
-          }
+      if (!data.teamName) continue;
+      if (data.teamName.trim().toLowerCase() === teamName.trim().toLowerCase() && (data.stage || 'qualifier') === stage) {
          return { id: doc.id, ...data };
       }
     }

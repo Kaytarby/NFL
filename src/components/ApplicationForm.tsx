@@ -366,7 +366,7 @@ export default function ApplicationForm({ onLogout, isGuest = false, user = null
 
   const getSubmissionVersion = (sub: FirestoreSubmission) => {
     const teamSubs = submissions
-      .filter(s => s.teamName.toLowerCase() === sub.teamName.toLowerCase())
+      .filter(s => s.teamName.trim().toLowerCase() === sub.teamName.trim().toLowerCase())
       .sort((a, b) => {
         const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
         const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
@@ -382,7 +382,7 @@ export default function ApplicationForm({ onLogout, isGuest = false, user = null
     const subTime = new Date(sub.createdAt).getTime();
 
     const priorSubmissions = submissions.filter(s => 
-      s.teamName.toLowerCase() === sub.teamName.toLowerCase() && 
+      s.teamName.trim().toLowerCase() === sub.teamName.trim().toLowerCase() && 
       (s.stage || 'qualifier') === (sub.stage || 'qualifier') &&
       s.createdAt && new Date(s.createdAt).getTime() < subTime
     );
@@ -418,7 +418,7 @@ export default function ApplicationForm({ onLogout, isGuest = false, user = null
     const nameClean = fullName.trim().toLowerCase();
     
     const matchedSub = submissions.find(sub => {
-      if (sub.teamName.toLowerCase() === currentTeamName.toLowerCase()) return false;
+      if (sub.teamName.trim().toLowerCase() === currentTeamName.trim().toLowerCase()) return false;
       if (!sub.synced && sub.status !== 'approved') return false;
       return (sub.players || []).some(p => p.fullName && p.fullName.trim().toLowerCase() === nameClean);
     });
@@ -465,28 +465,16 @@ export default function ApplicationForm({ onLogout, isGuest = false, user = null
   };
 
   const handleTeamSelect = async (name: string) => {
-    // Try to fetch previous submission from local submissions state
+    // Try to fetch previous submission from Firestore
     let prevSub = null;
-    const nameClean = name.trim().toLowerCase();
-    const zoneFilter = form.zone ? form.zone.trim().toLowerCase() : null;
-
-    const matchedSubs = submissions.filter(s => {
-       if (s.teamName.trim().toLowerCase() !== nameClean) return false;
-       if (zoneFilter && s.zone && s.zone.trim().toLowerCase() !== zoneFilter) return false;
-       return true;
-    }).sort((a, b) => {
-       const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-       const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-       return timeB - timeA; // desc
-    });
     
     if (stage === 'final') {
-      prevSub = matchedSubs.find(s => (s.stage || 'qualifier') === 'final');
+      prevSub = await getTeamSubmission(name, 'final');
       if (!prevSub) {
-        prevSub = matchedSubs.find(s => (s.stage || 'qualifier') === 'qualifier');
+        prevSub = await getTeamSubmission(name, 'qualifier');
       }
     } else {
-      prevSub = matchedSubs.find(s => (s.stage || 'qualifier') === 'qualifier');
+      prevSub = await getTeamSubmission(name, 'qualifier');
     }
     
     if (prevSub) {
@@ -766,7 +754,7 @@ export default function ApplicationForm({ onLogout, isGuest = false, user = null
       setSubmitting(true);
       
       // Prepare final submitted object with logo as null (logo upload removed by request)
-      const draftVersion = submissions.filter(s => s.teamName.toLowerCase() === form.teamName.toLowerCase()).length + 1;
+      const draftVersion = submissions.filter(s => s.teamName.trim().toLowerCase() === form.teamName.trim().toLowerCase()).length + 1;
       
       const finalForm = {
         ...form,
